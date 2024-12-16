@@ -1,0 +1,211 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>비트코인 실시간 가격</title> <!-- 비트코인 가격을 실시간으로 보여주는 페이지 -->
+    <style>
+        body {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            background-color: #000;
+            color: #ffffff;
+            font-family: Arial, sans-serif;
+            text-align: center;
+            margin: 0;
+        }
+        .container {
+            width: 70vw;
+            height: 70vh;
+            max-width: 600px;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+        }
+        .price-container {
+            display: flex;
+            align-items: center;
+            font-size: 5vw;
+            margin-bottom: 10px;
+        }
+        .icon {
+            height: calc(5vw * 3);
+            margin-right: calc(5vw * 3);
+            object-fit: contain;
+        }
+        .price {
+            margin: 0;
+            font-size: 5vw;
+        }
+        .price-usd {
+            font-size: 3vw;
+            color: gray;
+            margin-top: 5px;
+        }
+        .change-wrapper {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            margin-left: 10px;
+        }
+        .change {
+            font-size: 3vw;
+            color: lightgreen;
+        }
+        .change-label {
+            font-size: 2vw;
+            color: darkgray;
+            margin-top: 3px;
+        }
+        .negative-change {
+            color: red;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="price-container">
+            <img src="https://cryptologos.cc/logos/bitcoin-btc-logo.png" alt="Bitcoin Logo" class="icon">
+            <div>
+                <div id="bitcoin-price-krw" class="price"></div>
+                <div id="bitcoin-price-usd" class="price-usd"></div>
+            </div>
+            <div class="change-wrapper">
+                <div id="bitcoin-change" class="change"></div>
+                <div class="change-label">24h</div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let ws;
+        let lastPrice = 0;
+        const requestId = crypto.randomUUID(); // 고유한 요청 ID 생성
+        let krwUsdRate = 1300; // Initial value for KRW/USD exchange rate
+
+        // Fetch the exchange rate immediately when the page loads
+        fetchExchangeRate();
+
+        // Fetch the exchange rate every 6 minutes
+        setInterval(fetchExchangeRate, 6 * 60 * 1000); // 6 minutes in milliseconds
+
+        let exchangeRateCache = null; // Cache to store the exchange rate
+        const DEFAULT_EXCHANGE_RATE = 1300; // Default value for KRW/USD exchange rate
+        const MAX_RETRY_DELAY = 60 * 1000; // Maximum delay for reconnecting WebSocket (1 minute)
+        let retryDelay = 1000; // Initial delay for reconnecting WebSocket (1 second)
+        async function fetchExchangeRate() {
+            // Check if the exchange rate is already in the cache
+            if (exchangeRateCache) {
+                krwUsdRate = exchangeRateCache;
+                return;
+            }
+            try {
+                const response = await fetch('https://api.manana.kr/exchange/rate/KRW/USD.json');
+                const data = await response.json();
+                krwUsdRate = data[0].rate; // Update the exchange rate with the fetched value
+                exchangeRateCache = krwUsdRate; // Cache the exchange rate
+                retryDelay = 1000; // Reset the retry delay if the API call is successful
+            } catch (error) {
+                console.error('Error fetching exchange rate:', error);
+                krwUsdRate = DEFAULT_EXCHANGE_RATE; // Use the default exchange rate if the API call fails
+                retryDelay = Math.min(retryDelay * 2, MAX_RETRY_DELAY); // Exponential backoff for reconnecting WebSocket
+            }
+        }
+
+        // Rest of the code remains the same
+
+        // Fetch the exchange rate immediately when the page loads and every 6 minutes
+        setInterval(fetchExchangeRate, 6 * 60 * 1000); // 6 minutes in milliseconds
+        fetchExchangeRate();
+        
+        function connectWebSocket() {
+            ws = new WebSocket('wss://ws-api.binance.com/ws-api/v3');
+
+            ws.onopen = function() {
+                console.log('WebSocket 연결됨');
+                sendTickerRequest();
+            };
+
+            ws.onmessage = function (event) {
+                const response = JSON.parse(event.data);
+                console.log('Received data:', response); // 디버깅을 위한 로그 추가
+                if (response.id === requestId && response.result) {
+                    updatePrice(response.result);
+                } else if (response.error) {
+                    console.error('Error:', response.error);
+                }
+            };
+
+            ws.onclose = function() {
+                console.log('WebSocket 연결이 닫혔습니다. 재연결 시도 중...');
+                setTimeout(connectWebSocket, 5000);
+            };
+
+            ws.onerror = function(error) {
+                console.error('WebSocket 에러:', error);
+            };
+        }
+
+        function sendTickerRequest() {
+            if (ws.readyState === WebSocket.OPEN) {
+                ws.send(JSON.stringify({
+                    id: requestId,
+                    method: 'ticker.24hr',
+                    params: {
+                        symbol: 'BTCUSDT'
+                    }
+                }));
+            } else {
+                console.log('WebSocket이 아직 연결되지 않았습니다. 재시도 중...');
+                setTimeout(sendTickerRequest, 1000);
+            }
+        }
+
+        function updatePrice(data) {
+            if (!data || !data.lastPrice) {
+                console.error('Invalid data received:', data);
+                return;
+            }
+            const priceUSD = parseFloat(data.lastPrice);
+            const priceKRW = priceUSD * krwUsdRate;
+            console.log('priceKRW:', priceKRW);
+            const percentChange = parseFloat(data.priceChangePercent);
+
+            document.getElementById('bitcoin-price-usd').innerText = `$${priceUSD.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}`;
+            document.getElementById('bitcoin-price-krw').innerText = `₩${Math.round(priceKRW).toLocaleString()}`;
+
+            const formattedChange = percentChange >= 0 ? `+${percentChange.toFixed(2)}%` : `${percentChange.toFixed(2)}%`;
+            const changeElement = document.getElementById('bitcoin-change');
+            changeElement.innerText = formattedChange;
+
+            if (percentChange < 0) {
+                changeElement.classList.add('negative-change');
+            } else {
+                changeElement.classList.remove('negative-change');
+            }
+
+            // 가격 변화에 따른 애니메이션 효과
+            const priceElement = document.getElementById('bitcoin-price-usd');
+            if (priceUSD > lastPrice) {
+                priceElement.style.color = 'lightgreen';
+            } else if (priceUSD < lastPrice) {
+                priceElement.style.color = 'red';
+            }
+            setTimeout(() => {
+                priceElement.style.color = 'white';
+            }, 500);
+
+            lastPrice = priceUSD;
+        }
+
+        // 페이지 로드 시 즉시 연결 및 데이터 요청
+        connectWebSocket();
+
+        // 주기적으로 가격 업데이트 요청
+        setInterval(sendTickerRequest, 2000); // 2초마다 업데이트
+    </script>
+</body>
+</html>
