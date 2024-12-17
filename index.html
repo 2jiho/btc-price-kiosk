@@ -298,6 +298,19 @@
         light = !light;
         document.body.style.filter = `brightness(${light ? 100 : 50}%)`;
       });
+
+      // 전체 화면 진입 시 커서를 숨기기
+      document.addEventListener("mousemove", () => {
+        // document.fullscreenElement가 작동하지 않음...
+        if (
+          screen.width === window.innerWidth &&
+          screen.height === window.innerHeight
+        ) {
+          document.body.style.cursor = "none";
+        } else {
+          document.body.style.cursor = "auto";
+        }
+      });
     </script>
   </body>
 </html>
