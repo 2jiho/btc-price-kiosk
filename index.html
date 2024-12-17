@@ -241,12 +241,48 @@
 
         // 요소 위치 이동
         container.style.transform = `translate(${offsetX}px, ${offsetY}px)`;
-        console.log(`translate(${offsetX}px, ${offsetY}px)`);
+        console.debug(`translate(${offsetX}px, ${offsetY}px)`);
       }
 
       // 이동 반복
       setInterval(moveContainer, 60 * 1000);
       // 화면 번인 방지를 위한 container 객체 움직이기 끝
+
+      // 화면 안꺼지게
+      let wakeLock = null;
+
+      async function enableWakeLock() {
+        if (document.visibilityState !== "visible") {
+          console.warn(
+            "페이지가 보이지 않습니다. Wake Lock을 요청할 수 없습니다."
+          );
+          return; // 페이지가 가시적이지 않으면 함수를 종료
+        }
+
+        try {
+          wakeLock = await navigator.wakeLock.request("screen");
+          console.log("화면이 꺼지지 않도록 설정되었습니다.");
+        } catch (err) {
+          console.error(`${err.name}: ${err.message}`);
+        }
+      }
+
+      // 페이지가 보일 때 Wake Lock 요청
+      document.addEventListener("visibilitychange", async () => {
+        if (document.visibilityState === "visible") {
+          await enableWakeLock();
+        } else {
+          await releaseWakeLock();
+        }
+      });
+
+      async function releaseWakeLock() {
+        if (wakeLock) {
+          await wakeLock.release();
+          wakeLock = null;
+          console.log("Wake Lock이 해제되었습니다.");
+        }
+      }
     </script>
   </body>
 </html>
