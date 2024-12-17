@@ -55,7 +55,7 @@
   </head>
   <body>
     <div id="container">
-      <img src="https://cryptologos.cc/logos/bitcoin-btc-logo.png" id="icon" />
+      <img src="https://cryptologos.cc/logos/bitcoin-btc-logo.svg" id="icon" />
       <div>
         <p id="price-krw"></p>
         <p id="price-usd"></p>
@@ -117,9 +117,9 @@
             // 가격 처리
             updatePrice(response.result);
           }
-          //   console.log(
-          //     `${response.rateLimits[0].count}/${response.rateLimits[0].limit} requests/min`
-          //   );
+          console.debug(
+            `${response.rateLimits[0].count}/${response.rateLimits[0].limit} requests/min`
+          );
         };
 
         ws.onclose = function () {
@@ -156,11 +156,11 @@
         const priceUSD = parseFloat(data.lastPrice);
         const priceKRW = priceUSD * krwUsdRate;
         const percentChange = parseFloat(data.priceChangePercent);
-        // console.log({
-        //   priceUSD: priceUSD,
-        //   priceKRW: priceKRW,
-        //   percentChange: percentChange,
-        // });
+        console.debug({
+          priceUSD: priceUSD,
+          priceKRW: priceKRW,
+          percentChange: percentChange,
+        });
         const formattedPriceUSD = priceUSD.toLocaleString(undefined, {
           style: "currency",
           currency: "USD",
