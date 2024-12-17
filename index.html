@@ -1,211 +1,252 @@
 <!DOCTYPE html>
 <html lang="ko">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>비트코인 실시간 가격</title> 
-    <!-- 비트코인 가격을 실시간으로 보여주는 페이지 -->
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>비트코인 실시간 가격</title>
     <style>
-        body {
-            display: flex;
-            justify-content: center;
-            align-items: center;
-            height: 100vh;
-            background-color: #000;
-            color: #ffffff;
-            font-family: Arial, sans-serif;
-            text-align: center;
-            margin: 0;
-        }
-        .container {
-            width: 70vw;
-            height: 70vh;
-            max-width: 600px;
-            display: flex;
-            flex-direction: column;
-            justify-content: center;
-            align-items: center;
-        }
-        .price-container {
-            display: flex;
-            align-items: center;
-            font-size: 5vw;
-            margin-bottom: 10px;
-        }
-        .icon {
-            height: calc(5vw * 3);
-            margin-right: calc(5vw * 3);
-            object-fit: contain;
-        }
-        .price {
-            margin: 0;
-            font-size: 5vw;
-        }
-        .price-usd {
-            font-size: 3vw;
-            color: gray;
-            margin-top: 5px;
-        }
-        .change-wrapper {
-            display: flex;
-            flex-direction: column;
-            align-items: center;
-            margin-left: 10px;
-        }
-        .change {
-            font-size: 3vw;
-            color: lightgreen;
-        }
-        .change-label {
-            font-size: 2vw;
-            color: darkgray;
-            margin-top: 3px;
-        }
-        .negative-change {
-            color: red;
-        }
+      :root {
+        --reference-size: calc(min(1vw, 2vh));
+      }
+
+      body {
+        display: flex;
+        justify-content: center;
+        align-items: center;
+        height: 100vh;
+        width: 100vw;
+        background-color: #000;
+        color: #ffffff;
+        font-family: Arial, sans-serif;
+        text-align: center;
+        margin: 0;
+        overflow: hidden;
+      }
+      #container {
+        display: flex;
+        justify-content: center;
+        align-items: center;
+        position: relative; /* 추가된 부분 */
+      }
+      #icon {
+        height: calc(var(--reference-size) * 15);
+        margin-right: calc(var(--reference-size) * 5);
+      }
+      #price-krw {
+        margin: 0;
+        font-size: calc(var(--reference-size) * 5);
+        margin-right: calc(var(--reference-size) * 5);
+      }
+      #price-usd {
+        margin: 0;
+        font-size: calc(var(--reference-size) * 3);
+        margin-right: calc(var(--reference-size) * 5);
+      }
+      #change {
+        margin: 0;
+        font-size: calc(var(--reference-size) * 3);
+      }
+      #change-label {
+        margin: 0;
+        font-size: calc(var(--reference-size) * 2);
+        color: gray;
+      }
     </style>
-</head>
-<body>
-    <div class="container">
-        <div class="price-container">
-            <img src="https://cryptologos.cc/logos/bitcoin-btc-logo.png" alt="Bitcoin Logo" class="icon">
-            <div>
-                <div id="bitcoin-price-krw" class="price"></div>
-                <div id="bitcoin-price-usd" class="price-usd"></div>
-            </div>
-            <div class="change-wrapper">
-                <div id="bitcoin-change" class="change"></div>
-                <div class="change-label">24h</div>
-            </div>
-        </div>
+  </head>
+  <body>
+    <div id="container">
+      <img src="https://cryptologos.cc/logos/bitcoin-btc-logo.png" id="icon" />
+      <div>
+        <p id="price-krw"></p>
+        <p id="price-usd"></p>
+      </div>
+      <div>
+        <p id="change"></p>
+        <p id="change-label">24h</p>
+      </div>
     </div>
 
     <script>
-        let ws;
-        let lastPrice = 0;
-        const requestId = crypto.randomUUID(); // 고유한 요청 ID 생성
-        let krwUsdRate = 1300; // KRW/USD 환율의 초기 값 설정
+      // 환율 부분 시작
+      let krwUsdRate = 1400; // KRW/USD 환율의 초기 값 설정
+      async function fetchExchangeRate() {
+        try {
+          const response = await fetch(
+            "https://api.manana.kr/exchange/rate/KRW/USD.json"
+          );
+          const data = await response.json();
+          krwUsdRate = data[0].rate; // 가져온 값으로 환율 업데이트
+        } catch (error) {
+          console.error("Error fetching exchange rate:", error);
+        }
+      }
+      // 페이지 로드 시 즉시 환율을 가져오고, 6분마다 업데이트합니다.
+      fetchExchangeRate();
+      setInterval(fetchExchangeRate, 6 * 60 * 1000); // 6분마다 환율 업데이트
+      // 환율 부분 끝
 
-        // 페이지 로드 시 즉시 환율을 가져옵니다.
-        fetchExchangeRate();
+      // BTC 가격 부분 시작
+      const SYMBOL = "BTCUSDT";
+      let ws;
+      let lastPrice = 0;
 
-        // 6분마다 환율을 가져옵니다.
-        setInterval(fetchExchangeRate, 6 * 60 * 1000); // 6분마다 환율 업데이트
+      function connectWebSocket() {
+        ws = new WebSocket("wss://ws-api.binance.com/ws-api/v3");
 
-        let exchangeRateCache = null; // 환율 캐시
-        const DEFAULT_EXCHANGE_RATE = 1300; // 기본 환율 설정
-        const MAX_RETRY_DELAY = 60 * 1000; // WebSocket 재연결 최대 지연 시간 (1분)
-        let retryDelay = 1000; // WebSocket 재연결 초기 지연 시간 (1초)
+        ws.onopen = function () {
+          ws.send(
+            JSON.stringify({
+              id: crypto.randomUUID(),
+              method: "ping",
+            })
+          );
+        };
 
-        async function fetchExchangeRate() {
-            // 환율이 이미 캐시에 있는지 확인합니다.
-            if (exchangeRateCache) {
-                krwUsdRate = exchangeRateCache;
-                return;
-            }
-            try {
-                const response = await fetch('https://api.manana.kr/exchange/rate/KRW/USD.json');
-                const data = await response.json();
-                krwUsdRate = data[0].rate; // 가져온 값으로 환율 업데이트
-                exchangeRateCache = krwUsdRate; // 환율 캐시 업데이트
-                retryDelay = 1000; // API 호출 성공 시 재연결 지연 시간 초기화
-            } catch (error) {
-                console.error('Error fetching exchange rate:', error);
-                krwUsdRate = DEFAULT_EXCHANGE_RATE; // API 호출 실패 시 기본 환율 사용
-                retryDelay = Math.min(retryDelay * 2, MAX_RETRY_DELAY); // WebSocket 재연결을 위한 지연 시간 증가
-            }
+        ws.onmessage = function (event) {
+          const response = JSON.parse(event.data);
+          console.debug("Received data:", response);
+          if (response.error) {
+            console.error("Error:", response.error);
+            return;
+          }
+          if (Object.keys(response.result).length === 0) {
+            // 핑퐁 처리
+            console.log("WebSocket 연결됨.");
+            sendTickerRequest(); // 가격 바로 가져오기
+          } else if (response.result?.symbol === SYMBOL) {
+            // 가격 처리
+            updatePrice(response.result);
+          }
+          //   console.log(
+          //     `${response.rateLimits[0].count}/${response.rateLimits[0].limit} requests/min`
+          //   );
+        };
+
+        ws.onclose = function () {
+          console.log("WebSocket 끊김.");
+        };
+
+        ws.onerror = function (error) {
+          console.error("WebSocket 에러:", error);
+        };
+      }
+
+      function sendTickerRequest() {
+        if (ws.readyState === WebSocket.OPEN) {
+          ws.send(
+            JSON.stringify({
+              id: crypto.randomUUID(),
+              method: "ticker.24hr",
+              params: {
+                symbol: SYMBOL,
+              },
+            })
+          );
+        } else {
+          console.log("WebSocket이 아직 연결되지 않았습니다. 재시도 중...");
+          setTimeout(sendTickerRequest(), 1000); // 재시도
+        }
+      }
+
+      function updatePrice(data) {
+        if (!data || !data.lastPrice) {
+          console.error("Invalid data received:", data);
+          return;
+        }
+        const priceUSD = parseFloat(data.lastPrice);
+        const priceKRW = priceUSD * krwUsdRate;
+        const percentChange = parseFloat(data.priceChangePercent);
+        // console.log({
+        //   priceUSD: priceUSD,
+        //   priceKRW: priceKRW,
+        //   percentChange: percentChange,
+        // });
+        const formattedPriceUSD = priceUSD.toLocaleString(undefined, {
+          style: "currency",
+          currency: "USD",
+          currencyDisplay: "narrowSymbol",
+          minimumFractionDigits: 2,
+          maximumFractionDigits: 2,
+        });
+        document.getElementById("price-usd").innerText = formattedPriceUSD;
+
+        const formattedPriceKRW = priceKRW.toLocaleString(undefined, {
+          style: "currency",
+          currency: "KRW",
+          currencyDisplay: "narrowSymbol",
+          minimumFractionDigits: 0,
+          maximumFractionDigits: 0,
+        });
+        document.getElementById("price-krw").innerText = formattedPriceKRW;
+
+        const formattedChange = `${
+          percentChange >= 0 ? "+" : ""
+        }${percentChange.toFixed(2)}%`;
+        const changeElement = document.getElementById("change");
+        changeElement.innerText = formattedChange;
+        if (percentChange > 0) {
+          changeElement.style.color = "lightgreen";
+        } else if (percentChange < 0) {
+          changeElement.style.color = "lightcoral";
+        } else {
+          changeElement.style.color = "white";
         }
 
-        // 페이지 로드 시 즉시 환율을 가져오고, 6분마다 업데이트합니다.
-        setInterval(fetchExchangeRate, 6 * 60 * 1000); // 6분마다 환율 업데이트
-        fetchExchangeRate();
-        
-        function connectWebSocket() {
-            ws = new WebSocket('wss://ws-api.binance.com/ws-api/v3');
-
-            ws.onopen = function() {
-                console.log('WebSocket 연결됨');
-                sendTickerRequest(); // WebSocket 연결 시 데이터 요청
-            };
-
-            ws.onmessage = function (event) {
-                const response = JSON.parse(event.data);
-                console.log('Received data:', response); // 디버깅을 위한 로그 추가
-                if (response.id === requestId && response.result) {
-                    updatePrice(response.result); // 가격 업데이트
-                } else if (response.error) {
-                    console.error('Error:', response.error);
-                }
-            };
-
-            ws.onclose = function() {
-                console.log('WebSocket 연결이 닫혔습니다. 재연결 시도 중...');
-                setTimeout(connectWebSocket, 5000); // 재연결 시도
-            };
-
-            ws.onerror = function(error) {
-                console.error('WebSocket 에러:', error);
-            };
+        // 가격 변화에 따른 애니메이션 효과
+        const priceElement = document.getElementById("price-usd");
+        if (priceUSD > lastPrice) {
+          priceElement.style.color = "green";
+        } else if (priceUSD < lastPrice) {
+          priceElement.style.color = "maroon";
         }
+        setTimeout(() => {
+          priceElement.style.color = "gray";
+        }, 500);
 
-        function sendTickerRequest() {
-            if (ws.readyState === WebSocket.OPEN) {
-                ws.send(JSON.stringify({
-                    id: requestId,
-                    method: 'ticker.24hr',
-                    params: {
-                        symbol: 'BTCUSDT'
-                    }
-                }));
-            } else {
-                console.log('WebSocket이 아직 연결되지 않았습니다. 재시도 중...');
-                setTimeout(sendTickerRequest, 1000); // 재시도
-            }
-        }
+        lastPrice = priceUSD; // 마지막 가격 업데이트
+      }
 
-        function updatePrice(data) {
-            if (!data || !data.lastPrice) {
-                console.error('Invalid data received:', data);
-                return;
-            }
-            const priceUSD = parseFloat(data.lastPrice);
-            const priceKRW = priceUSD * krwUsdRate;
-            console.log('priceKRW:', priceKRW);
-            const percentChange = parseFloat(data.priceChangePercent);
+      // 페이지 로드 시 즉시 연결 및 데이터 요청
+      connectWebSocket();
 
-            document.getElementById('bitcoin-price-usd').innerText = `$${priceUSD.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}`;
-            document.getElementById('bitcoin-price-krw').innerText = `₩${Math.round(priceKRW).toLocaleString()}`;
+      // 주기적으로 가격 업데이트 요청
+      setInterval(sendTickerRequest, 2000);
+      // BTC 가격 부분 끝
 
-            const formattedChange = percentChange >= 0 ? `+${percentChange.toFixed(2)}%` : `${percentChange.toFixed(2)}%`;
-            const changeElement = document.getElementById('bitcoin-change');
-            changeElement.innerText = formattedChange;
+      // 화면 번인 방지를 위한 container 객체 움직이기 시작
+      const container = document.getElementById("container");
+      let offsetX = 0;
+      let offsetY = 0;
 
-            if (percentChange < 0) {
-                changeElement.classList.add('negative-change');
-            } else {
-                changeElement.classList.remove('negative-change');
-            }
+      const step = 10; // 이동할 픽셀 수
+      let limitX = 50;
+      let limitY = 50;
 
-            // 가격 변화에 따른 애니메이션 효과
-            const priceElement = document.getElementById('bitcoin-price-usd');
-            if (priceUSD > lastPrice) {
-                priceElement.style.color = 'lightgreen';
-            } else if (priceUSD < lastPrice) {
-                priceElement.style.color = 'red';
-            }
-            setTimeout(() => {
-                priceElement.style.color = 'white';
-            }, 500);
+      function moveContainer() {
+        // 화면 크기에 따라 이동량 제한
+        limitX = (window.innerWidth - container.offsetWidth) / 2;
+        limitY = (window.innerHeight - container.offsetHeight) / 2;
+        limitX *= 0.1;
+        limitY *= 0.1;
+        limitX = limitX.toFixed();
+        limitY = limitY.toFixed();
 
-            lastPrice = priceUSD; // 마지막 가격 업데이트
-        }
+        // 새로운 위치 계산
+        offsetX += (Math.random() < 0.5 ? 1 : -1) * step;
+        offsetY += (Math.random() < 0.5 ? 1 : -1) * step;
 
-        // 페이지 로드 시 즉시 연결 및 데이터 요청
-        connectWebSocket();
+        // 최대 움직임 제한
+        offsetX = Math.max(Math.min(offsetX, limitX), -limitX);
+        offsetY = Math.max(Math.min(offsetY, limitY), -limitY);
 
-        // 주기적으로 가격 업데이트 요청
-        setInterval(sendTickerRequest, 2000); // 2초마다 업데이트
+        // 요소 위치 이동
+        container.style.transform = `translate(${offsetX}px, ${offsetY}px)`;
+        console.log(`translate(${offsetX}px, ${offsetY}px)`);
+      }
+
+      // 이동 반복
+      setInterval(moveContainer, 60 * 1000);
+      // 화면 번인 방지를 위한 container 객체 움직이기 끝
     </script>
-</body>
+  </body>
 </html>
