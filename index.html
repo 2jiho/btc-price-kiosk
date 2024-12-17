@@ -21,6 +21,7 @@
         text-align: center;
         margin: 0;
         overflow: hidden;
+        user-select: none; /* 텍스트 선택 방지 */
       }
       #container {
         display: flex;
@@ -284,6 +285,13 @@
         }
       }
       enableWakeLock();
+
+      // 터치 밝기 조절
+      let light = true;
+      document.body.addEventListener("click", () => {
+        light = !light;
+        document.body.style.filter = `brightness(${light ? 100 : 50}%)`;
+      });
     </script>
   </body>
 </html>
