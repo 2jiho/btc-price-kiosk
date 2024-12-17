@@ -1,0 +1,14 @@
+{
+  "name": "BTC Price Kiosk",
+  "short_name": "BTC Price Kiosk",
+  "start_url": "/index.html",
+  "display": "standalone",
+  "background_color": "#ffffff",
+  "icons": [
+    {
+      "src": "https://cryptologos.cc/logos/bitcoin-btc-logo.svg",
+      "sizes": "any",
+      "type": "image/svg+xml"
+    }
+  ]
+}
