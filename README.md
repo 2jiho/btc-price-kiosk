@@ -12,6 +12,8 @@
 - [x] KRW/USD 환율 자동 업데이트
 - [x] OLED 번인 방지 알고리즘
 - [ ] 임시로 사용한 환율 API 수정
+- [x] PWA
+- [x] 화면 꺼짐 방지 설정
 
 ## GitHub Pages
 
