@@ -17,4 +17,4 @@
 
 ## GitHub Pages
 
-이 프로젝트는 GitHub Pages를 통해 배포되었습니다. [여기서 확인하세요](https://2jiho6.github.io/btc-price-kiosk).
+이 프로젝트는 GitHub Pages를 통해 배포되었습니다. [여기서 확인하세요](https://2jiho.github.io/btc-price-kiosk).
