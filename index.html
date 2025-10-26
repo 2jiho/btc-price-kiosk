@@ -74,33 +74,78 @@
     </div>
 
     <script>
-      // 환율 부분 시작
-      let krwUsdRate = 1400; // KRW/USD 환율의 초기 값 설정
+      // ========== 설정 상수 ==========
+      const CONFIG = {
+        DEBUG_MODE: false, // 프로덕션에서는 false로 설정
+        EXCHANGE_RATE_UPDATE_INTERVAL: 6 * 60 * 1000, // 6분
+        PRICE_UPDATE_INTERVAL: 2000, // 2초
+        BURNIN_PREVENTION_INTERVAL: 60 * 1000, // 60초
+        BURNIN_PREVENTION_STEP: 10, // 10px
+        BURNIN_PREVENTION_LIMIT: 0.1, // 화면의 10%
+        PRICE_ANIMATION_DURATION: 500, // 0.5초
+        WEBSOCKET_RECONNECT_DELAY: 3000, // 3초
+        WEBSOCKET_RETRY_DELAY: 1000, // 1초
+        DEFAULT_KRW_USD_RATE: 1400,
+        BTC_SYMBOL: "BTCUSDT",
+      };
+
+      // 디버그 로깅 헬퍼
+      const log = {
+        debug: (...args) => CONFIG.DEBUG_MODE && console.debug(...args),
+        info: (...args) => console.log(...args),
+        warn: (...args) => console.warn(...args),
+        error: (...args) => console.error(...args),
+      };
+
+      // ========== 환율 부분 시작 ==========
+      let krwUsdRate = CONFIG.DEFAULT_KRW_USD_RATE;
+      let exchangeRateError = false;
+
       async function fetchExchangeRate() {
         try {
           const response = await fetch(
             "https://api.manana.kr/exchange/rate/KRW/USD.json"
           );
+          if (!response.ok) {
+            throw new Error(`HTTP error! status: ${response.status}`);
+          }
           const data = await response.json();
-          krwUsdRate = data[0].rate; // 가져온 값으로 환율 업데이트
+          if (data && data[0] && data[0].rate) {
+            krwUsdRate = data[0].rate;
+            exchangeRateError = false;
+            log.info(`환율 업데이트 완료: ${krwUsdRate.toFixed(2)} KRW/USD`);
+          } else {
+            throw new Error("Invalid exchange rate data format");
+          }
         } catch (error) {
-          console.error("Error fetching exchange rate:", error);
+          exchangeRateError = true;
+          log.error("환율 가져오기 실패:", error);
+          log.warn(
+            `기본 환율(${CONFIG.DEFAULT_KRW_USD_RATE} KRW/USD) 사용 중`
+          );
         }
       }
-      // 페이지 로드 시 즉시 환율을 가져오고, 6분마다 업데이트합니다.
-      fetchExchangeRate();
-      setInterval(fetchExchangeRate, 6 * 60 * 1000); // 6분마다 환율 업데이트
-      // 환율 부분 끝
 
-      // BTC 가격 부분 시작
-      const SYMBOL = "BTCUSDT";
+      fetchExchangeRate();
+      setInterval(fetchExchangeRate, CONFIG.EXCHANGE_RATE_UPDATE_INTERVAL);
+      // ========== 환율 부분 끝 ==========
+
+      // ========== BTC 가격 부분 시작 ==========
       let ws;
       let lastPrice = 0;
+      let reconnectTimeout;
+      let priceUpdateInterval;
 
       function connectWebSocket() {
+        // 기존 연결이 있으면 정리
+        if (ws) {
+          ws.close();
+        }
+
         ws = new WebSocket("wss://ws-api.binance.com/ws-api/v3");
 
         ws.onopen = function () {
+          log.info("WebSocket 연결 성공");
           ws.send(
             JSON.stringify({
               id: crypto.randomUUID(),
@@ -111,63 +156,92 @@
 
         ws.onmessage = function (event) {
           const response = JSON.parse(event.data);
-          console.debug("Received data:", response);
+          log.debug("Received data:", response);
+
           if (response.error) {
-            console.error("Error:", response.error);
+            log.error("WebSocket 에러:", response.error);
             return;
           }
+
+          // response.result가 존재하는지 확인
+          if (!response.result) {
+            log.warn("response.result가 없습니다:", response);
+            return;
+          }
+
           if (Object.keys(response.result).length === 0) {
             // 핑퐁 처리
-            console.log("WebSocket 연결됨.");
+            log.info("WebSocket 연결됨 (ping/pong)");
             sendTickerRequest(); // 가격 바로 가져오기
-          } else if (response.result?.symbol === SYMBOL) {
+          } else if (response.result.symbol === CONFIG.BTC_SYMBOL) {
             // 가격 처리
             updatePrice(response.result);
           }
-          console.debug(
-            `${response.rateLimits[0].count}/${response.rateLimits[0].limit} requests/min`
-          );
+
+          // Rate limit 체크
+          if (response.rateLimits && response.rateLimits[0]) {
+            const rateLimit = response.rateLimits[0];
+            log.debug(
+              `Rate limit: ${rateLimit.count}/${rateLimit.limit} requests/min`
+            );
+
+            // Rate limit의 80%에 도달하면 경고
+            if (rateLimit.count / rateLimit.limit > 0.8) {
+              log.warn("Rate limit 80% 도달. 요청 빈도를 줄이는 것을 권장합니다.");
+            }
+          }
         };
 
-        ws.onclose = function () {
-          console.log("WebSocket 끊김.");
+        ws.onclose = function (event) {
+          log.warn("WebSocket 연결 종료:", event.code, event.reason);
+          // 자동 재연결
+          clearTimeout(reconnectTimeout);
+          reconnectTimeout = setTimeout(() => {
+            log.info("WebSocket 재연결 시도 중...");
+            connectWebSocket();
+          }, CONFIG.WEBSOCKET_RECONNECT_DELAY);
         };
 
         ws.onerror = function (error) {
-          console.error("WebSocket 에러:", error);
+          log.error("WebSocket 에러:", error);
         };
       }
 
       function sendTickerRequest() {
-        if (ws.readyState === WebSocket.OPEN) {
+        if (ws && ws.readyState === WebSocket.OPEN) {
           ws.send(
             JSON.stringify({
               id: crypto.randomUUID(),
               method: "ticker.24hr",
               params: {
-                symbol: SYMBOL,
+                symbol: CONFIG.BTC_SYMBOL,
               },
             })
           );
         } else {
-          console.log("WebSocket이 아직 연결되지 않았습니다. 재시도 중...");
-          setTimeout(sendTickerRequest(), 1000); // 재시도
+          log.debug("WebSocket이 아직 연결되지 않았습니다. 재시도 중...");
+          setTimeout(sendTickerRequest, CONFIG.WEBSOCKET_RETRY_DELAY); // 버그 수정: 괄호 제거
         }
       }
 
       function updatePrice(data) {
         if (!data || !data.lastPrice) {
-          console.error("Invalid data received:", data);
+          log.error("잘못된 데이터:", data);
           return;
         }
+
         const priceUSD = parseFloat(data.lastPrice);
         const priceKRW = priceUSD * krwUsdRate;
         const percentChange = parseFloat(data.priceChangePercent);
-        console.debug({
+
+        log.debug({
           priceUSD: priceUSD,
           priceKRW: priceKRW,
           percentChange: percentChange,
+          exchangeRateError: exchangeRateError,
         });
+
+        // USD 가격 표시
         const formattedPriceUSD = priceUSD.toLocaleString(undefined, {
           style: "currency",
           currency: "USD",
@@ -177,6 +251,7 @@
         });
         document.getElementById("price-usd").innerText = formattedPriceUSD;
 
+        // KRW 가격 표시
         const formattedPriceKRW = priceKRW.toLocaleString(undefined, {
           style: "currency",
           currency: "KRW",
@@ -184,8 +259,12 @@
           minimumFractionDigits: 0,
           maximumFractionDigits: 0,
         });
-        document.getElementById("price-krw").innerText = formattedPriceKRW;
+        const krwText = exchangeRateError
+          ? `${formattedPriceKRW} (추정)`
+          : formattedPriceKRW;
+        document.getElementById("price-krw").innerText = krwText;
 
+        // 24시간 변화율 표시
         const formattedChange = `${
           percentChange >= 0 ? "+" : ""
         }${percentChange.toFixed(2)}%`;
@@ -208,39 +287,44 @@
         }
         setTimeout(() => {
           priceElement.style.color = "gray";
-        }, 500);
+        }, CONFIG.PRICE_ANIMATION_DURATION);
 
-        lastPrice = priceUSD; // 마지막 가격 업데이트
+        lastPrice = priceUSD;
       }
 
-      // 페이지 로드 시 즉시 연결 및 데이터 요청
+      // 페이지 로드 시 WebSocket 연결
       connectWebSocket();
 
       // 주기적으로 가격 업데이트 요청
-      setInterval(sendTickerRequest, 2000);
-      // BTC 가격 부분 끝
+      priceUpdateInterval = setInterval(
+        sendTickerRequest,
+        CONFIG.PRICE_UPDATE_INTERVAL
+      );
+      // ========== BTC 가격 부분 끝 ==========
 
-      // 화면 번인 방지를 위한 container 객체 움직이기 시작
+      // ========== 화면 번인 방지 시작 ==========
       const container = document.getElementById("container");
       let offsetX = 0;
       let offsetY = 0;
-
-      const step = 10; // 이동할 픽셀 수
       let limitX = 50;
       let limitY = 50;
 
       function moveContainer() {
         // 화면 크기에 따라 이동량 제한
-        limitX = (window.innerWidth - container.offsetWidth) / 2;
-        limitY = (window.innerHeight - container.offsetHeight) / 2;
-        limitX *= 0.1;
-        limitY *= 0.1;
-        limitX = limitX.toFixed();
-        limitY = limitY.toFixed();
+        limitX =
+          ((window.innerWidth - container.offsetWidth) / 2) *
+          CONFIG.BURNIN_PREVENTION_LIMIT;
+        limitY =
+          ((window.innerHeight - container.offsetHeight) / 2) *
+          CONFIG.BURNIN_PREVENTION_LIMIT;
+        limitX = Math.floor(limitX);
+        limitY = Math.floor(limitY);
 
         // 새로운 위치 계산
-        offsetX += (Math.random() < 0.5 ? 1 : -1) * step;
-        offsetY += (Math.random() < 0.5 ? 1 : -1) * step;
+        offsetX +=
+          (Math.random() < 0.5 ? 1 : -1) * CONFIG.BURNIN_PREVENTION_STEP;
+        offsetY +=
+          (Math.random() < 0.5 ? 1 : -1) * CONFIG.BURNIN_PREVENTION_STEP;
 
         // 최대 움직임 제한
         offsetX = Math.max(Math.min(offsetX, limitX), -limitX);
@@ -248,33 +332,39 @@
 
         // 요소 위치 이동
         container.style.transform = `translate(${offsetX}px, ${offsetY}px)`;
-        console.debug(`translate(${offsetX}px, ${offsetY}px)`);
+        log.debug(`translate(${offsetX}px, ${offsetY}px)`);
       }
 
-      // 이동 반복
-      setInterval(moveContainer, 60 * 1000);
-      // 화면 번인 방지를 위한 container 객체 움직이기 끝
+      // 번인 방지 반복
+      setInterval(moveContainer, CONFIG.BURNIN_PREVENTION_INTERVAL);
+      // ========== 화면 번인 방지 끝 ==========
 
-      // 화면 안꺼지게
+      // ========== Wake Lock (화면 꺼짐 방지) 시작 ==========
       let wakeLock = null;
 
       async function enableWakeLock() {
         if (document.visibilityState !== "visible") {
-          console.warn(
-            "페이지가 보이지 않습니다. Wake Lock을 요청할 수 없습니다."
-          );
-          return; // 페이지가 가시적이지 않으면 함수를 종료
+          log.warn("페이지가 보이지 않습니다. Wake Lock을 요청할 수 없습니다.");
+          return;
         }
 
         try {
           wakeLock = await navigator.wakeLock.request("screen");
-          console.log("화면이 꺼지지 않도록 설정되었습니다.");
+          log.info("Wake Lock 활성화: 화면이 꺼지지 않습니다.");
         } catch (err) {
-          console.error(`${err.name}: ${err.message}`);
+          log.error(`Wake Lock 에러: ${err.name} - ${err.message}`);
         }
       }
 
-      // 페이지가 보일 때 Wake Lock 요청
+      async function releaseWakeLock() {
+        if (wakeLock) {
+          await wakeLock.release();
+          wakeLock = null;
+          log.info("Wake Lock 해제됨");
+        }
+      }
+
+      // 페이지 가시성 변경 시 Wake Lock 관리
       document.addEventListener("visibilitychange", async () => {
         if (document.visibilityState === "visible") {
           await enableWakeLock();
@@ -283,25 +373,20 @@
         }
       });
 
-      async function releaseWakeLock() {
-        if (wakeLock) {
-          await wakeLock.release();
-          wakeLock = null;
-          console.log("Wake Lock이 해제되었습니다.");
-        }
-      }
       enableWakeLock();
+      // ========== Wake Lock 끝 ==========
 
-      // 터치 밝기 조절
+      // ========== 터치 밝기 조절 시작 ==========
       let light = true;
       document.body.addEventListener("click", () => {
         light = !light;
         document.body.style.filter = `brightness(${light ? 100 : 50}%)`;
+        log.debug(`밝기: ${light ? "100%" : "50%"}`);
       });
+      // ========== 터치 밝기 조절 끝 ==========
 
-      // 전체 화면 진입 시 커서를 숨기기
+      // ========== 전체 화면 시 커서 숨김 시작 ==========
       document.addEventListener("mousemove", () => {
-        // document.fullscreenElement가 작동하지 않음...
         if (
           screen.width === window.innerWidth &&
           screen.height === window.innerHeight
@@ -311,6 +396,7 @@
           document.body.style.cursor = "auto";
         }
       });
+      // ========== 전체 화면 시 커서 숨김 끝 ==========
     </script>
   </body>
 </html>
