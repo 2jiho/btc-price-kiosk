@@ -491,6 +491,21 @@
 
         enableWakeLock();
 
+        // ========== 두 번 탭 시 밝기 조절 ==========
+        var light = true;
+        var lastTapTime = 0;
+
+        document.body.addEventListener("touchend", function (e) {
+          e.preventDefault();
+          var currentTime = Date.now();
+          if (currentTime - lastTapTime < 400) {
+            light = !light;
+            document.body.style.filter = "brightness(" + (light ? 100 : 50) + "%)";
+            log.debug("밝기: " + (light ? "100%" : "50%"));
+          }
+          lastTapTime = currentTime;
+        });
+
         // ========== 전체 화면 시 커서 숨김 ==========
         var cursorTimeout = null;
 
