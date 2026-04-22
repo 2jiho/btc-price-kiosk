@@ -104,9 +104,93 @@
         color: #fff;
         font-size: calc(var(--reference-size) * 4);
       }
+      #admin-panel {
+        position: fixed;
+        top: 50%;
+        left: 50%;
+        transform: translate(-50%, -50%);
+        background-color: rgba(20, 20, 20, 0.95);
+        border: 1px solid #444;
+        border-radius: 12px;
+        padding: 30px;
+        display: none;
+        flex-direction: column;
+        gap: 15px;
+        z-index: 2000;
+        min-width: 300px;
+        box-shadow: 0 0 30px rgba(0,0,0,0.8);
+      }
+      #admin-panel h2 {
+        margin: 0 0 10px 0;
+        color: #fff;
+        font-size: 18px;
+        text-align: center;
+      }
+      #admin-panel label {
+        color: #ccc;
+        font-size: 14px;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+      }
+      #admin-panel input, #admin-panel select {
+        background: #333;
+        color: #fff;
+        border: 1px solid #555;
+        border-radius: 4px;
+        padding: 5px 10px;
+        font-size: 14px;
+        width: 150px;
+      }
+      #admin-panel button {
+        background: #51cf66;
+        color: #000;
+        border: none;
+        border-radius: 6px;
+        padding: 10px;
+        font-size: 14px;
+        font-weight: bold;
+        cursor: pointer;
+        margin-top: 10px;
+      }
+      #admin-panel button:hover {
+        background: #40b050;
+      }
+      #admin-trigger {
+        position: fixed;
+        top: 0;
+        left: 0;
+        width: 50px;
+        height: 50px;
+        z-index: 3000;
+        cursor: default;
+      }
     </style>
   </head>
   <body>
+    <div id="admin-trigger"></div>
+    <div id="admin-panel">
+      <h2>관리자 설정</h2>
+      <label>
+        코인 심볼
+        <select id="admin-symbol">
+          <option value="BTCUSDT">BTC/USDT</option>
+          <option value="ETHUSDT">ETH/USDT</option>
+          <option value="SOLUSDT">SOL/USDT</option>
+          <option value="XRPUSDT">XRP/USDT</option>
+        </select>
+      </label>
+      <label>
+        업데이트 주기 (ms)
+        <input type="number" id="admin-interval" value="2000" min="1000" max="10000" step="500" />
+      </label>
+      <label>
+        디버그 모드
+        <input type="checkbox" id="admin-debug" />
+      </label>
+      <button id="admin-save">저장 및 적용</button>
+      <button id="admin-close" style="background:#666; color:#fff;">닫기</button>
+    </div>
     <div id="status-indicator" aria-live="polite"></div>
     <div id="status-overlay">
       <h1>연결 끊김</h1>
@@ -182,6 +266,13 @@
         var elStatus = document.getElementById("status-indicator");
         var elOverlay = document.getElementById("status-overlay");
         var elOverlayMsg = document.getElementById("overlay-msg");
+        var elAdminPanel = document.getElementById("admin-panel");
+        var elAdminTrigger = document.getElementById("admin-trigger");
+        var elAdminSymbol = document.getElementById("admin-symbol");
+        var elAdminInterval = document.getElementById("admin-interval");
+        var elAdminDebug = document.getElementById("admin-debug");
+        var elAdminSave = document.getElementById("admin-save");
+        var elAdminClose = document.getElementById("admin-close");
 
 
         // ========== 상태 표시 ==========
@@ -587,6 +678,85 @@
           }
           releaseWakeLock();
         });
+
+        // ========== 관리자 설정 (Admin Panel) ==========
+        function loadSettings() {
+          try {
+            var saved = localStorage.getItem("btc-kiosk-settings");
+            if (saved) {
+              var settings = JSON.parse(saved);
+              if (settings.symbol) CONFIG.BTC_SYMBOL = settings.symbol;
+              if (settings.interval) CONFIG.PRICE_UPDATE_INTERVAL = parseInt(settings.interval);
+              if (settings.debug !== undefined) CONFIG.DEBUG_MODE = settings.debug;
+              log.info("설정 불러오기 완료:", settings);
+            }
+          } catch (e) {
+            log.error("설정 불러오기 실패:", e);
+          }
+        }
+
+        function saveSettings() {
+          CONFIG.BTC_SYMBOL = elAdminSymbol.value;
+          CONFIG.PRICE_UPDATE_INTERVAL = parseInt(elAdminInterval.value);
+          CONFIG.DEBUG_MODE = elAdminDebug.checked;
+
+          var settings = {
+            symbol: CONFIG.BTC_SYMBOL,
+            interval: CONFIG.PRICE_UPDATE_INTERVAL,
+            debug: CONFIG.DEBUG_MODE
+          };
+          localStorage.setItem("btc-kiosk-settings", JSON.stringify(settings));
+          log.info("설정 저장 완료:", settings);
+
+          // 실시간 적용
+          if (priceUpdateIntervalId) {
+            clearInterval(priceUpdateIntervalId);
+          }
+          priceUpdateIntervalId = addInterval(
+            setInterval(sendTickerRequest, CONFIG.PRICE_UPDATE_INTERVAL)
+          );
+
+          // WebSocket 재연결 (심볼 변경 시)
+          connectWebSocket();
+
+          hideAdminPanel();
+          alert("설정이 저장되었습니다.");
+        }
+
+        function showAdminPanel() {
+          elAdminSymbol.value = CONFIG.BTC_SYMBOL;
+          elAdminInterval.value = CONFIG.PRICE_UPDATE_INTERVAL;
+          elAdminDebug.checked = CONFIG.DEBUG_MODE;
+          elAdminPanel.style.display = "flex";
+        }
+
+        function hideAdminPanel() {
+          elAdminPanel.style.display = "none";
+        }
+
+        // 좌상단 5번 클릭 감지
+        var adminClickCount = 0;
+        var adminClickTimer = null;
+
+        elAdminTrigger.addEventListener("click", function () {
+          adminClickCount++;
+          if (adminClickCount === 1) {
+            adminClickTimer = setTimeout(function () {
+              adminClickCount = 0;
+            }, 2000);
+          }
+          if (adminClickCount >= 5) {
+            clearTimeout(adminClickTimer);
+            adminClickCount = 0;
+            showAdminPanel();
+          }
+        });
+
+        elAdminSave.addEventListener("click", saveSettings);
+        elAdminClose.addEventListener("click", hideAdminPanel);
+
+        // 초기 설정 로드
+        loadSettings();
 
         // ========== Service Worker 등록 ==========
         if ("serviceWorker" in navigator) {
