@@ -1,9 +1,11 @@
 {
   "name": "BTC Price Kiosk",
   "short_name": "BTC Price Kiosk",
-  "start_url": "https://2jiho.github.io/btc-price-kiosk/index.html",
+  "start_url": "./index.html",
   "display": "fullscreen",
-  "background_color": "#ffffff",
+  "background_color": "#000000",
+  "theme_color": "#000000",
+  "description": "Real-time Bitcoin price kiosk display",
   "icons": [
     {
       "src": "./bitcoin-btc-logo.svg",

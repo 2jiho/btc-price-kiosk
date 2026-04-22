@@ -74,6 +74,12 @@
       #status-indicator.connected {
         color: #51cf66;
       }
+      .krw-estimated {
+        font-size: 0.7em;
+        vertical-align: super;
+        color: #888;
+        margin-left: 4px;
+      }
     </style>
   </head>
   <body>
@@ -167,7 +173,7 @@
           return id;
         }
 
-        // ========== 환율 ==========
+        // ========== 환율 (fallback 기본값) ==========
         var krwUsdRate = CONFIG.DEFAULT_KRW_USD_RATE;
         var exchangeRateError = false;
 
@@ -189,10 +195,8 @@
             }
           } catch (error) {
             exchangeRateError = true;
-            log.error("환율 가져오기 실패:", error);
-            log.warn(
-              "기본 환율(" + CONFIG.DEFAULT_KRW_USD_RATE + " KRW/USD) 사용 중"
-            );
+            log.error("환율 가져오기 실패, 기본값 사용:", error);
+            krwUsdRate = CONFIG.DEFAULT_KRW_USD_RATE;
           }
         }
 
@@ -369,7 +373,7 @@
           });
           elPriceUSD.textContent = formattedPriceUSD;
 
-          // KRW 가격 표시
+          // KRW 가격 표시 (추정일 경우 별도 스타일)
           var formattedPriceKRW = priceKRW.toLocaleString(undefined, {
             style: "currency",
             currency: "KRW",
@@ -377,9 +381,12 @@
             minimumFractionDigits: 0,
             maximumFractionDigits: 0,
           });
-          elPriceKRW.textContent = exchangeRateError
-            ? formattedPriceKRW + " (추정)"
-            : formattedPriceKRW;
+
+          if (exchangeRateError) {
+            elPriceKRW.innerHTML = formattedPriceKRW + '<span class="krw-estimated">(추정)</span>';
+          } else {
+            elPriceKRW.textContent = formattedPriceKRW;
+          }
 
           // 24시간 변화율 표시
           var formattedChange =
@@ -484,26 +491,24 @@
 
         enableWakeLock();
 
-        // ========== 터치 밝기 조절 ==========
-        var light = true;
-        document.body.addEventListener("click", function () {
-          light = !light;
-          document.body.style.filter = "brightness(" + (light ? 100 : 50) + "%)";
-          log.debug("밝기: " + (light ? "100%" : "50%"));
-        });
-
         // ========== 전체 화면 시 커서 숨김 ==========
         var cursorTimeout = null;
+
+        function checkFullscreenAndHideCursor() {
+          if (document.fullscreenElement) {
+            document.body.style.cursor = "none";
+          } else {
+            document.body.style.cursor = "auto";
+          }
+        }
 
         document.addEventListener("mousemove", function () {
           document.body.style.cursor = "auto";
           if (cursorTimeout) clearTimeout(cursorTimeout);
-          cursorTimeout = setTimeout(function () {
-            if (document.fullscreenElement || window.innerHeight === screen.height) {
-              document.body.style.cursor = "none";
-            }
-          }, 2000);
+          cursorTimeout = setTimeout(checkFullscreenAndHideCursor, 2000);
         });
+
+        document.addEventListener("fullscreenchange", checkFullscreenAndHideCursor);
 
         // ========== 페이지 언로드 시 리소스 정리 ==========
         window.addEventListener("beforeunload", function () {
@@ -515,6 +520,18 @@
           }
           releaseWakeLock();
         });
+
+        // ========== Service Worker 등록 ==========
+        if ("serviceWorker" in navigator) {
+          navigator.serviceWorker.register("./service-worker.js").then(
+            function (registration) {
+              log.info("Service Worker 등록됨: " + registration.scope);
+            },
+            function (error) {
+              log.error("Service Worker 등록 실패:", error);
+            }
+          );
+        }
       })();
     </script>
   </body>
