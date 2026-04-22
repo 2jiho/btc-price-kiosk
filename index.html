@@ -182,10 +182,10 @@
             {
               name: "Frankfurter",
               fetch: async () => {
-                const res = await fetch("https://api.frankfurter.app/v1/latest?from=USD&to=KRW");
-                if (!res.ok) throw new Error("Frankfurter API error: " + res.status);
+                const res = await fetch("https://api.frankfurter.app/v2/latest?from=USD&to=KRW");
+                if (!res.ok) throw new Error("Frankfurter v2 API error: " + res.status);
                 const data = await res.json();
-                if (!data.rates || !data.rates.KRW) throw new Error("Invalid Frankfurter data");
+                if (!data.rates || !data.rates.KRW) throw new Error("Invalid Frankfurter v2 data");
                 return data.rates.KRW;
               }
             },
