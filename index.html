@@ -173,31 +173,49 @@
           return id;
         }
 
-        // ========== 환율 (fallback 기본값) ==========
+        // ========== 환율 (다중 소스 fallback) ==========
         var krwUsdRate = CONFIG.DEFAULT_KRW_USD_RATE;
-        var exchangeRateError = false;
+        var exchangeRateSource = "기본값";
 
         async function fetchExchangeRate() {
-          try {
-            var response = await fetch(
-              "https://api.manana.kr/exchange/rate/KRW/USD.json"
-            );
-            if (!response.ok) {
-              throw new Error("HTTP error! status: " + response.status);
+          const sources = [
+            {
+              name: "Frankfurter",
+              fetch: async () => {
+                const res = await fetch("https://api.frankfurter.app/latest?from=USD&to=KRW");
+                if (!res.ok) throw new Error();
+                const data = await res.json();
+                return data.rates.KRW;
+              }
+            },
+            {
+              name: "manana.kr",
+              fetch: async () => {
+                const res = await fetch("https://api.manana.kr/exchange/rate/KRW/USD.json");
+                if (!res.ok) throw new Error();
+                const data = await res.json();
+                return data[0].rate;
+              }
             }
-            var data = await response.json();
-            if (data && data[0] && data[0].rate) {
-              krwUsdRate = data[0].rate;
-              exchangeRateError = false;
-              log.info("환율 업데이트 완료: " + krwUsdRate.toFixed(2) + " KRW/USD");
-            } else {
-              throw new Error("Invalid exchange rate data format");
+          ];
+
+          for (const source of sources) {
+            try {
+              const rate = await source.fetch();
+              if (rate && !isNaN(rate)) {
+                krwUsdRate = rate;
+                exchangeRateSource = source.name;
+                log.info("환율 업데이트 완료 (" + source.name + "): " + krwUsdRate.toFixed(2) + " KRW/USD");
+                return;
+              }
+            } catch (e) {
+              log.warn(source.name + " 소스 실패, 다음 소스 시도 중...");
             }
-          } catch (error) {
-            exchangeRateError = true;
-            log.error("환율 가져오기 실패, 기본값 사용:", error);
-            krwUsdRate = CONFIG.DEFAULT_KRW_USD_RATE;
           }
+
+          log.error("모든 환율 소스 실패, 기본값 사용");
+          exchangeRateSource = "기본값";
+          krwUsdRate = CONFIG.DEFAULT_KRW_USD_RATE;
         }
 
         fetchExchangeRate();
@@ -360,7 +378,7 @@
             priceUSD: priceUSD,
             priceKRW: priceKRW,
             percentChange: percentChange,
-            exchangeRateError: exchangeRateError,
+            exchangeRateSource: exchangeRateSource,
           });
 
           // USD 가격 표시
@@ -382,7 +400,7 @@
             maximumFractionDigits: 0,
           });
 
-          if (exchangeRateError) {
+          if (exchangeRateSource === "기본값") {
             elPriceKRW.innerHTML = formattedPriceKRW + '<span class="krw-estimated">(추정)</span>';
           } else {
             elPriceKRW.textContent = formattedPriceKRW;
