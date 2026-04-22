@@ -60,34 +60,19 @@
       }
       #status-indicator {
         position: fixed;
-        top: 15px;
-        right: 15px;
-        display: flex;
-        align-items: center;
-        gap: 8px;
+        top: 8px;
+        right: 12px;
         font-size: 12px;
         color: #666;
         opacity: 0.6;
         transition: opacity 0.3s;
       }
-      #status-led {
-        width: 8px;
-        height: 8px;
-        border-radius: 50%;
-        background-color: #555;
-        box-shadow: 0 0 4px rgba(0,0,0,0.5);
-      }
-      #status-indicator.connected #status-led {
-        background-color: #51cf66;
-        box-shadow: 0 0 8px #51cf66;
-      }
-      #status-indicator.error #status-led {
-        background-color: #ff6b6b;
-        box-shadow: 0 0 8px #ff6b6b;
-      }
       #status-indicator.error {
         color: #ff6b6b;
         opacity: 1;
+      }
+      #status-indicator.connected {
+        color: #51cf66;
       }
       .krw-estimated {
         font-size: 0.7em;
@@ -119,51 +104,14 @@
         color: #fff;
         font-size: calc(var(--reference-size) * 4);
       }
-      .price-container {
-        display: flex;
-        flex-direction: column;
-        align-items: center;
-        margin-right: calc(var(--reference-size) * 5);
-      }
-      #sparkline {
-        width: calc(var(--reference-size) * 20);
-        height: calc(var(--reference-size) * 5);
-        margin-top: 5px;
-      }
-      @keyframes price-up {
-        0% { transform: translateY(0); }
-        50% { transform: translateY(-10px); }
-        100% { transform: translateY(0); }
-      }
-      @keyframes price-down {
-        0% { transform: translateY(0); }
-        50% { transform: translateY(10px); }
-        100% { transform: translateY(0); }
-      }
-      .anim-up { animation: price-up 0.5s ease-out; }
-      .anim-down { animation: price-down 0.5s ease-out; }
     </style>
   </head>
   <body>
-    <div id="status-indicator" aria-live="polite">
-      <div id="status-led"></div>
-      <span id="status-text">연결 확인 중...</span>
-    </div>
+    <div id="status-indicator" aria-live="polite"></div>
     <div id="status-overlay">
       <h1>연결 끊김</h1>
       <p id="overlay-msg">네트워크 상태를 확인 중입니다...</p>
     </div>
-    <div id="container">
-      <img src="./bitcoin-btc-logo.svg" id="icon" alt="Bitcoin logo" />
-      <div class="price-container">
-        <p id="price-krw" aria-live="polite" aria-atomic="true"></p>
-        <p id="price-usd" aria-live="polite" aria-atomic="true"></p>
-      </div>
-      <div class="price-container">
-        <p id="change" aria-live="polite" aria-atomic="true"></p>
-        <p id="change-label">24h</p>
-        <canvas id="sparkline"></canvas>
-      </div>
     <div id="container">
       <img src="./bitcoin-btc-logo.svg" id="icon" alt="Bitcoin logo" />
       <div>
@@ -232,17 +180,13 @@
         var elChange = document.getElementById("change");
         var elContainer = document.getElementById("container");
         var elStatus = document.getElementById("status-indicator");
-        var elStatusText = document.getElementById("status-text");
-        var elStatusLed = document.getElementById("status-led");
         var elOverlay = document.getElementById("status-overlay");
         var elOverlayMsg = document.getElementById("overlay-msg");
-        var elSparkline = document.getElementById("sparkline");
-
 
 
         // ========== 상태 표시 ==========
         function setStatus(text, className) {
-          elStatusText.textContent = text;
+          elStatus.textContent = text;
           elStatus.className = className || "";
 
           if (className === "connected") {
@@ -256,8 +200,6 @@
         // ========== 리소스 정리용 ID 저장 ==========
         var intervalIds = [];
         var timeoutIds = [];
-        var priceHistory = [];
-        var MAX_HISTORY = 20;
 
         function addInterval(id) {
           intervalIds.push(id);
@@ -472,13 +414,6 @@
             return;
           }
 
-          // 가격 이력 업데이트 (차트용)
-          priceHistory.push(priceUSD);
-          if (priceHistory.length > MAX_HISTORY) {
-            priceHistory.shift();
-          }
-          drawSparkline();
-
           log.debug({
             priceUSD: priceUSD,
             priceKRW: priceKRW,
@@ -523,54 +458,19 @@
             elChange.style.color = "white";
           }
 
-          // 가격 변화에 따른 애니메이션 효과 (Bounce)
-          if (priceUSD !== lastPrice) {
-            var animClass = priceUSD > lastPrice ? "anim-up" : "anim-down";
-            elPriceUSD.classList.remove("anim-up", "anim-down");
-            void elPriceUSD.offsetWidth; // Reflow trigger
-            elPriceUSD.classList.add(animClass);
-            
-            if (priceUSD > lastPrice) {
-              elPriceUSD.style.color = "green";
-            } else if (priceUSD < lastPrice) {
-              elPriceUSD.style.color = "maroon";
-            }
-            addTimeout(
-              setTimeout(function () {
-                elPriceUSD.style.color = "gray";
-                elPriceUSD.classList.remove("anim-up", "anim-down");
-              }, CONFIG.PRICE_ANIMATION_DURATION)
-            );
+          // 가격 변화에 따른 애니메이션 효과
+          if (priceUSD > lastPrice) {
+            elPriceUSD.style.color = "green";
+          } else if (priceUSD < lastPrice) {
+            elPriceUSD.style.color = "maroon";
           }
+          addTimeout(
+            setTimeout(function () {
+              elPriceUSD.style.color = "gray";
+            }, CONFIG.PRICE_ANIMATION_DURATION)
+          );
 
           lastPrice = priceUSD;
-        }
-
-        function drawSparkline() {
-          if (priceHistory.length < 2) return;
-
-          var ctx = elSparkline.getContext("2d");
-          var width = elSparkline.width;
-          var height = elSparkline.height;
-          
-          ctx.clearRect(0, 0, width, height);
-          
-          var min = Math.min.apply(null, priceHistory);
-          var max = Math.max.apply(null, priceHistory);
-          var range = max - min || 1;
-
-          ctx.beginPath();
-          ctx.strokeStyle = "#51cf66";
-          ctx.lineWidth = 2;
-          ctx.lineJoin = "round";
-
-          for (var i = 0; i < priceHistory.length; i++) {
-            var x = (i / (MAX_HISTORY - 1)) * width;
-            var y = height - ((priceHistory[i] - min) / range) * height;
-            if (i === 0) ctx.moveTo(x, y);
-            else ctx.lineTo(x, y);
-          }
-          ctx.stroke();
         }
 
         // WebSocket 연결 및 주기적 가격 업데이트
