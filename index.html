@@ -627,12 +627,12 @@
 
         enableWakeLock();
 
-        // ========== 두 번 클릭 시 밝기 조절 ==========
+        // ========== 두 번 클릭 시 밝기 조절 (컨텐츠 영역만) ==========
         var light = true;
 
-        document.body.addEventListener("dblclick", function () {
+        elContainer.addEventListener("dblclick", function () {
           light = !light;
-          document.body.style.setProperty("filter", "brightness(" + (light ? 100 : 50) + "%)", "important");
+          elContainer.style.setProperty("filter", "brightness(" + (light ? 100 : 50) + "%)", "important");
           log.debug("밝기: " + (light ? "100%" : "50%"));
         });
 
