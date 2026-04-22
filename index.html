@@ -690,6 +690,11 @@
 
         function updateIcon(symbol) {
           var iconUrl = COIN_ICONS[symbol] || COIN_ICONS["BTCUSDT"];
+          elIcon.onerror = function() {
+            log.warn("아이콘 로드 실패, 기본 아이콘으로 폴백");
+            this.src = COIN_ICONS["BTCUSDT"];
+            this.onerror = null;
+          };
           elIcon.src = iconUrl;
           elIcon.alt = symbol.replace("USDT", "") + " logo";
         }
