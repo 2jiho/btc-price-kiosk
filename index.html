@@ -183,8 +183,9 @@
               name: "Frankfurter",
               fetch: async () => {
                 const res = await fetch("https://api.frankfurter.app/latest?from=USD&to=KRW");
-                if (!res.ok) throw new Error();
+                if (!res.ok) throw new Error("Frankfurter API error: " + res.status);
                 const data = await res.json();
+                if (!data.rates || !data.rates.KRW) throw new Error("Invalid Frankfurter data");
                 return data.rates.KRW;
               }
             },
@@ -192,8 +193,9 @@
               name: "manana.kr",
               fetch: async () => {
                 const res = await fetch("https://api.manana.kr/exchange/rate/KRW/USD.json");
-                if (!res.ok) throw new Error();
+                if (!res.ok) throw new Error("manana.kr API error: " + res.status);
                 const data = await res.json();
+                if (!data || !data[0] || !data[0].rate) throw new Error("Invalid manana.kr data");
                 return data[0].rate;
               }
             }
@@ -209,7 +211,7 @@
                 return;
               }
             } catch (e) {
-              log.warn(source.name + " 소스 실패, 다음 소스 시도 중...");
+              log.warn(source.name + " 소스 실패: " + e.message);
             }
           }
 
