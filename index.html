@@ -158,6 +158,19 @@
       #admin-panel button:hover {
         background: #40b050;
       }
+      #icon-fallback {
+        display: none;
+        height: calc(var(--reference-size) * 15);
+        width: calc(var(--reference-size) * 15);
+        justify-content: center;
+        align-items: center;
+        font-size: calc(var(--reference-size) * 4);
+        font-weight: bold;
+        color: #fff;
+        background: #333;
+        border-radius: 50%;
+        margin-right: calc(var(--reference-size) * 5);
+      }
     </style>
   </head>
   <body>
@@ -185,6 +198,7 @@
     </div>
     <div id="container">
       <img src="./bitcoin-btc-logo.svg" id="icon" alt="Bitcoin logo" />
+      <div id="icon-fallback"></div>
       <div>
         <p id="price-krw" aria-live="polite" aria-atomic="true"></p>
         <p id="price-usd" aria-live="polite" aria-atomic="true"></p>
@@ -260,6 +274,7 @@
         var elAdminSave = document.getElementById("admin-save");
         var elAdminClose = document.getElementById("admin-close");
         var elIcon = document.getElementById("icon");
+        var elIconFallback = document.getElementById("icon-fallback");
 
 
         // ========== 상태 표시 ==========
@@ -678,11 +693,19 @@
 
         function updateIcon(ticker) {
           var iconUrl = getIconUrl(ticker);
-          elIcon.onerror = function() {
-            log.warn("아이콘 로드 실패, 기본 아이콘으로 폴백");
-            this.src = getIconUrl("btc");
-            this.onerror = null;
+          
+          elIcon.onload = function() {
+            elIcon.style.display = "block";
+            elIconFallback.style.display = "none";
           };
+          
+          elIcon.onerror = function() {
+            log.warn("아이콘 로드 실패, 티커 텍스트로 대체");
+            elIcon.style.display = "none";
+            elIconFallback.textContent = ticker.toUpperCase();
+            elIconFallback.style.display = "flex";
+          };
+          
           elIcon.src = iconUrl;
           elIcon.alt = ticker.toUpperCase() + " logo";
         }
