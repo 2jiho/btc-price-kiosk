@@ -66,6 +66,8 @@
         color: #666;
         opacity: 0.6;
         transition: opacity 0.3s;
+        cursor: pointer;
+        user-select: none;
       }
       #status-indicator.error {
         color: #ff6b6b;
@@ -156,29 +158,14 @@
       #admin-panel button:hover {
         background: #40b050;
       }
-      #admin-trigger {
-        position: fixed;
-        top: 0;
-        left: 0;
-        width: 50px;
-        height: 50px;
-        z-index: 3000;
-        cursor: default;
-      }
     </style>
   </head>
   <body>
-    <div id="admin-trigger"></div>
     <div id="admin-panel">
       <h2>관리자 설정</h2>
       <label>
-        코인 심볼
-        <select id="admin-symbol">
-          <option value="BTCUSDT">BTC/USDT</option>
-          <option value="ETHUSDT">ETH/USDT</option>
-          <option value="SOLUSDT">SOL/USDT</option>
-          <option value="XRPUSDT">XRP/USDT</option>
-        </select>
+        코인 티커 (예: BTC, ETH, ADA)
+        <input type="text" id="admin-symbol" value="BTC" placeholder="BTC" />
       </label>
       <label>
         업데이트 주기 (ms)
@@ -267,7 +254,6 @@
         var elOverlay = document.getElementById("status-overlay");
         var elOverlayMsg = document.getElementById("overlay-msg");
         var elAdminPanel = document.getElementById("admin-panel");
-        var elAdminTrigger = document.getElementById("admin-trigger");
         var elAdminSymbol = document.getElementById("admin-symbol");
         var elAdminInterval = document.getElementById("admin-interval");
         var elAdminDebug = document.getElementById("admin-debug");
@@ -681,22 +667,24 @@
         });
 
         // ========== 관리자 설정 (Admin Panel) ==========
-        var COIN_ICONS = {
-          "BTCUSDT": "https://cdn.jsdelivr.net/gh/spothq/cryptocurrency-icons@master/svg/color/btc.svg",
-          "ETHUSDT": "https://cdn.jsdelivr.net/gh/spothq/cryptocurrency-icons@master/svg/color/eth.svg",
-          "SOLUSDT": "https://cdn.jsdelivr.net/gh/spothq/cryptocurrency-icons@master/svg/color/sol.svg",
-          "XRPUSDT": "https://cdn.jsdelivr.net/gh/spothq/cryptocurrency-icons@master/svg/color/xrp.svg"
-        };
+        function getBinanceSymbol(ticker) {
+          return ticker.toUpperCase() + "USDT";
+        }
 
-        function updateIcon(symbol) {
-          var iconUrl = COIN_ICONS[symbol] || COIN_ICONS["BTCUSDT"];
+        function getIconUrl(ticker) {
+          var lower = ticker.toLowerCase();
+          return "https://cdn.jsdelivr.net/gh/spothq/cryptocurrency-icons@master/svg/color/" + lower + ".svg";
+        }
+
+        function updateIcon(ticker) {
+          var iconUrl = getIconUrl(ticker);
           elIcon.onerror = function() {
             log.warn("아이콘 로드 실패, 기본 아이콘으로 폴백");
-            this.src = COIN_ICONS["BTCUSDT"];
+            this.src = getIconUrl("btc");
             this.onerror = null;
           };
           elIcon.src = iconUrl;
-          elIcon.alt = symbol.replace("USDT", "") + " logo";
+          elIcon.alt = ticker.toUpperCase() + " logo";
         }
 
         function loadSettings() {
@@ -704,10 +692,12 @@
             var saved = localStorage.getItem("btc-kiosk-settings");
             if (saved) {
               var settings = JSON.parse(saved);
-              if (settings.symbol) CONFIG.BTC_SYMBOL = settings.symbol;
+              if (settings.ticker) {
+                CONFIG.BTC_SYMBOL = getBinanceSymbol(settings.ticker);
+                updateIcon(settings.ticker);
+              }
               if (settings.interval) CONFIG.PRICE_UPDATE_INTERVAL = parseInt(settings.interval);
               if (settings.debug !== undefined) CONFIG.DEBUG_MODE = settings.debug;
-              if (settings.symbol) updateIcon(settings.symbol);
               log.info("설정 불러오기 완료:", settings);
             }
           } catch (e) {
@@ -716,12 +706,19 @@
         }
 
         function saveSettings() {
-          CONFIG.BTC_SYMBOL = elAdminSymbol.value;
+          var ticker = elAdminSymbol.value.trim().toUpperCase();
+          if (!ticker) {
+            alert("티커를 입력해주세요.");
+            return;
+          }
+
+          var binanceSymbol = getBinanceSymbol(ticker);
+          CONFIG.BTC_SYMBOL = binanceSymbol;
           CONFIG.PRICE_UPDATE_INTERVAL = parseInt(elAdminInterval.value);
           CONFIG.DEBUG_MODE = elAdminDebug.checked;
 
           var settings = {
-            symbol: CONFIG.BTC_SYMBOL,
+            ticker: ticker,
             interval: CONFIG.PRICE_UPDATE_INTERVAL,
             debug: CONFIG.DEBUG_MODE
           };
@@ -729,7 +726,7 @@
           log.info("설정 저장 완료:", settings);
 
           // 아이콘 업데이트
-          updateIcon(CONFIG.BTC_SYMBOL);
+          updateIcon(ticker);
 
           // 실시간 적용
           if (priceUpdateIntervalId) {
@@ -747,7 +744,8 @@
         }
 
         function showAdminPanel() {
-          elAdminSymbol.value = CONFIG.BTC_SYMBOL;
+          var currentTicker = CONFIG.BTC_SYMBOL.replace("USDT", "");
+          elAdminSymbol.value = currentTicker;
           elAdminInterval.value = CONFIG.PRICE_UPDATE_INTERVAL;
           elAdminDebug.checked = CONFIG.DEBUG_MODE;
           elAdminPanel.style.display = "flex";
@@ -757,23 +755,8 @@
           elAdminPanel.style.display = "none";
         }
 
-        // 좌상단 5번 클릭 감지
-        var adminClickCount = 0;
-        var adminClickTimer = null;
-
-        elAdminTrigger.addEventListener("click", function () {
-          adminClickCount++;
-          if (adminClickCount === 1) {
-            adminClickTimer = setTimeout(function () {
-              adminClickCount = 0;
-            }, 2000);
-          }
-          if (adminClickCount >= 5) {
-            clearTimeout(adminClickTimer);
-            adminClickCount = 0;
-            showAdminPanel();
-          }
-        });
+        // 상태 표시줄 클릭으로 관리자 패널 열기
+        elStatus.addEventListener("click", showAdminPanel);
 
         elAdminSave.addEventListener("click", saveSettings);
         elAdminClose.addEventListener("click", hideAdminPanel);
