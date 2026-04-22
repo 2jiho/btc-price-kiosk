@@ -493,16 +493,11 @@
 
         // ========== 두 번 클릭 시 밝기 조절 ==========
         var light = true;
-        var lastClickTime = 0;
 
-        document.body.addEventListener("click", function () {
-          var currentTime = Date.now();
-          if (currentTime - lastClickTime < 400) {
-            light = !light;
-            document.body.style.filter = "brightness(" + (light ? 100 : 50) + "%)";
-            log.debug("밝기: " + (light ? "100%" : "50%"));
-          }
-          lastClickTime = currentTime;
+        document.body.addEventListener("dblclick", function () {
+          light = !light;
+          document.body.style.setProperty("filter", "brightness(" + (light ? 100 : 50) + "%)", "important");
+          log.debug("밝기: " + (light ? "100%" : "50%"));
         });
 
         // ========== 전체 화면 시 커서 숨김 ==========
