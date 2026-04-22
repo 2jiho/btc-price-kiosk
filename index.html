@@ -273,6 +273,7 @@
         var elAdminDebug = document.getElementById("admin-debug");
         var elAdminSave = document.getElementById("admin-save");
         var elAdminClose = document.getElementById("admin-close");
+        var elIcon = document.getElementById("icon");
 
 
         // ========== 상태 표시 ==========
@@ -680,6 +681,19 @@
         });
 
         // ========== 관리자 설정 (Admin Panel) ==========
+        var COIN_ICONS = {
+          "BTCUSDT": "./bitcoin-btc-logo.svg",
+          "ETHUSDT": "https://cryptologos.cc/logos/ethereum-eth-logo.svg",
+          "SOLUSDT": "https://cryptologos.cc/logos/solana-sol-logo.svg",
+          "XRPUSDT": "https://cryptologos.cc/logos/xrp-xrp-logo.svg"
+        };
+
+        function updateIcon(symbol) {
+          var iconUrl = COIN_ICONS[symbol] || COIN_ICONS["BTCUSDT"];
+          elIcon.src = iconUrl;
+          elIcon.alt = symbol.replace("USDT", "") + " logo";
+        }
+
         function loadSettings() {
           try {
             var saved = localStorage.getItem("btc-kiosk-settings");
@@ -688,6 +702,7 @@
               if (settings.symbol) CONFIG.BTC_SYMBOL = settings.symbol;
               if (settings.interval) CONFIG.PRICE_UPDATE_INTERVAL = parseInt(settings.interval);
               if (settings.debug !== undefined) CONFIG.DEBUG_MODE = settings.debug;
+              if (settings.symbol) updateIcon(settings.symbol);
               log.info("설정 불러오기 완료:", settings);
             }
           } catch (e) {
@@ -707,6 +722,9 @@
           };
           localStorage.setItem("btc-kiosk-settings", JSON.stringify(settings));
           log.info("설정 저장 완료:", settings);
+
+          // 아이콘 업데이트
+          updateIcon(CONFIG.BTC_SYMBOL);
 
           // 실시간 적용
           if (priceUpdateIntervalId) {
