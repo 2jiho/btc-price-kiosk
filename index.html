@@ -182,7 +182,7 @@
             {
               name: "Frankfurter",
               fetch: async () => {
-                const res = await fetch("https://api.frankfurter.app/latest?from=USD&to=KRW");
+                const res = await fetch("https://api.frankfurter.app/v1/latest?from=USD&to=KRW");
                 if (!res.ok) throw new Error("Frankfurter API error: " + res.status);
                 const data = await res.json();
                 if (!data.rates || !data.rates.KRW) throw new Error("Invalid Frankfurter data");
