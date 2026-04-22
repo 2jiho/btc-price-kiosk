@@ -10,7 +10,8 @@
     {
       "src": "./bitcoin-btc-logo.svg",
       "sizes": "any",
-      "type": "image/svg+xml"
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
     }
   ]
 }
