@@ -2,6 +2,7 @@
 <html lang="ko">
   <head>
     <meta charset="UTF-8" />
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; connect-src 'self' https://api.frankfurter.dev https://cdn.jsdelivr.net https://ws-api.binance.com wss://ws-api.binance.com https://api.manana.kr; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' https://cdn.jsdelivr.net data:; manifest-src 'self';" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <link rel="manifest" href="manifest.json" />
     <link
@@ -11,6 +12,14 @@
     />
     <title>비트코인 실시간 가격</title>
     <style>
+      * {
+        -webkit-user-select: none;
+        user-select: none;
+      }
+      input, button {
+        -webkit-user-select: text;
+        user-select: text;
+      }
       :root {
         --reference-size: calc(min(1vw, 2vh));
       }
@@ -28,12 +37,15 @@
         margin: 0;
         overflow: hidden;
         user-select: none;
+        -webkit-user-select: none;
       }
       #container {
         display: flex;
         justify-content: center;
         align-items: center;
         position: relative;
+        user-select: none;
+        -webkit-user-select: none;
       }
       #icon {
         height: calc(var(--reference-size) * 15);
@@ -101,62 +113,69 @@
         color: #ff6b6b;
         font-size: calc(var(--reference-size) * 8);
         margin-bottom: 20px;
+        user-select: none;
       }
       #status-overlay p {
         color: #fff;
         font-size: calc(var(--reference-size) * 4);
+        user-select: none;
       }
       #admin-panel {
         position: fixed;
         top: 50%;
         left: 50%;
         transform: translate(-50%, -50%);
-        background-color: rgba(20, 20, 20, 0.95);
+        background: #1a1a1a;
         border: 1px solid #444;
-        border-radius: 12px;
-        padding: 30px;
+        border-radius: 8px;
+        padding: 24px;
         display: none;
         flex-direction: column;
-        gap: 15px;
+        gap: 12px;
         z-index: 2000;
-        min-width: 400px;
-        box-shadow: 0 0 30px rgba(0,0,0,0.8);
+        min-width: 320px;
       }
       #admin-panel h2 {
-        margin: 0 0 10px 0;
+        margin: 0 0 4px 0;
         color: #fff;
-        font-size: 18px;
+        font-size: 16px;
         text-align: center;
       }
       #admin-panel label {
         color: #ccc;
         font-size: 14px;
         display: flex;
-        justify-content: space-between;
         align-items: center;
+        justify-content: space-between;
       }
-      #admin-panel input, #admin-panel select {
-        background: #333;
-        color: #fff;
-        border: 1px solid #555;
-        border-radius: 4px;
-        padding: 5px 10px;
-        font-size: 14px;
-        width: 150px;
+      #admin-panel label input[type="text"],
+      #admin-panel label input[type="number"] {
+        width: 120px;
       }
-      #admin-panel button {
-        background: #51cf66;
-        color: #000;
-        border: none;
-        border-radius: 6px;
-        padding: 10px;
-        font-size: 14px;
-        font-weight: bold;
-        cursor: pointer;
-        margin-top: 10px;
+      .brightness-row {
+        display: flex;
+        align-items: center;
+        gap: 6px;
       }
-      #admin-panel button:hover {
-        background: #40b050;
+      #admin-panel label input[type="text"],
+      #admin-panel label input[type="number"] {
+        width: 120px;
+      }
+      #brightness-value {
+        font-size: 13px;
+        color: #aaa;
+        display: inline-block;
+        width: 32px;
+        text-align: right;
+      }
+      .brightness-row {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        margin-top: 4px;
+      }
+      .brightness-row input[type="range"] {
+        flex: 1;
       }
       #icon-fallback {
         display: none;
@@ -171,6 +190,23 @@
         border-radius: 50%;
         margin-right: calc(var(--reference-size) * 5);
       }
+      /* Toast notification for admin UX */
+      #toast {
+        position: fixed;
+        bottom: 20px;
+        left: 50%;
+        transform: translateX(-50%);
+        background: #333;
+        color: #fff;
+        padding: 10px 20px;
+        border-radius: 8px;
+        font-size: 14px;
+        z-index: 3000;
+        opacity: 0;
+        transition: opacity 0.3s;
+        pointer-events: none;
+      }
+      #toast.show { opacity: 1; }
     </style>
   </head>
   <body>
@@ -182,15 +218,23 @@
       </label>
       <label>
         업데이트 주기 (ms)
-        <input type="number" id="admin-interval" value="2000" min="1000" max="10000" step="500" />
+        <input type="number" id="admin-interval" value="5000" min="1000" max="30000" step="1000" />
       </label>
       <label>
         디버그 모드
         <input type="checkbox" id="admin-debug" />
       </label>
+      <label>
+        화면 밝기
+        <div class="brightness-row">
+          <input type="range" id="admin-brightness" min="10" max="100" value="100" step="5" />
+          <span id="brightness-value">100%</span>
+        </div>
+      </label>
       <button id="admin-save">저장 및 적용</button>
-      <button id="admin-close" style="background:#666; color:#fff;">닫기</button>
+      <button id="admin-close">닫기</button>
     </div>
+    <div id="toast"></div>
     <div id="status-indicator" aria-live="polite"></div>
     <div id="status-overlay">
       <h1>연결 끊김</h1>
@@ -217,7 +261,7 @@
         const CONFIG = {
           DEBUG_MODE: false,
           EXCHANGE_RATE_UPDATE_INTERVAL: 6 * 60 * 1000,
-          PRICE_UPDATE_INTERVAL: 2000,
+          PRICE_UPDATE_INTERVAL: 5000,
           BURNIN_PREVENTION_INTERVAL: 60 * 1000,
           BURNIN_PREVENTION_STEP: 10,
           BURNIN_PREVENTION_LIMIT: 0.1,
@@ -225,8 +269,10 @@
           WEBSOCKET_RECONNECT_BASE_DELAY: 1000,
           WEBSOCKET_RECONNECT_MAX_DELAY: 30000,
           WEBSOCKET_RETRY_DELAY: 1000,
-          DEFAULT_KRW_USD_RATE: 1400,
           BTC_SYMBOL: "BTCUSDT",
+          BINANCE_WS_URL: "wss://ws-api.binance.com/ws-api/v3",
+          PING_INTERVAL: 30000,
+          PONG_TIMEOUT: 10000,
         };
 
         // 디버그 로깅 헬퍼
@@ -271,6 +317,8 @@
         var elAdminSymbol = document.getElementById("admin-symbol");
         var elAdminInterval = document.getElementById("admin-interval");
         var elAdminDebug = document.getElementById("admin-debug");
+        var elAdminBrightness = document.getElementById("admin-brightness");
+        var elBrightnessValue = document.getElementById("brightness-value");
         var elAdminSave = document.getElementById("admin-save");
         var elAdminClose = document.getElementById("admin-close");
         var elIcon = document.getElementById("icon");
@@ -284,9 +332,27 @@
 
           if (className === "connected") {
             elOverlay.style.display = "none";
+            if (staleTimer) { clearInterval(staleTimer); staleTimer = null; }
           } else if (className === "error") {
             elOverlay.style.display = "flex";
-            elOverlayMsg.textContent = text;
+            // Show last known KRW price with a live N초 전 counter
+            if (lastKRWPrice > 0) {
+              elOverlayMsg.textContent = ("마지막 가격: " + lastKRWPrice.toLocaleString(undefined, {style: "currency", currency: "KRW", currencyDisplay: "narrowSymbol", minimumFractionDigits: 0}) + " (" + 0 + "초 전)");
+            } else {
+              elOverlayMsg.textContent = text;
+            }
+            if (staleTimer) clearInterval(staleTimer);
+            staleTimer = addInterval(setInterval(function () {
+              var secs = Math.floor((Date.now() - lastPriceUpdate) / 1000);
+              if (lastKRWPrice > 0) {
+                elOverlayMsg.textContent = ("마지막 가격: " + lastKRWPrice.toLocaleString(undefined, {style: "currency", currency: "KRW", currencyDisplay: "narrowSymbol", minimumFractionDigits: 0}) + ", ") + secs + "초 전";
+              } else {
+                elOverlayMsg.textContent = secs + "초 전";
+              }
+            }, 1000));
+          } else {
+            elOverlay.style.display = "none";
+            if (staleTimer) { clearInterval(staleTimer); staleTimer = null; }
           }
         }
 
@@ -305,8 +371,8 @@
         }
 
         // ========== 환율 (다중 소스 fallback) ==========
-        var krwUsdRate = CONFIG.DEFAULT_KRW_USD_RATE;
-        var exchangeRateSource = "기본값";
+        var krwUsdRate = 0;
+        var exchangeRateSource = "";
 
         async function fetchExchangeRate() {
           const sources = [
@@ -321,13 +387,13 @@
               }
             },
             {
-              name: "manana.kr",
+              name: "exchange-api (CDN)",
               fetch: async () => {
-                const res = await fetch("https://api.manana.kr/exchange/rate/KRW/USD.json");
-                if (!res.ok) throw new Error("manana.kr API error: " + res.status);
+                const res = await fetch("https://cdn.jsdelivr.net/npm/@fawazahmed0/currency-api@latest/v1/currencies/usd.json");
+                if (!res.ok) throw new Error("exchange-api CDN error: " + res.status);
                 const data = await res.json();
-                if (!data || !data[0] || !data[0].rate) throw new Error("Invalid manana.kr data");
-                return data[0].rate;
+                if (!data || !data.usd || !data.usd.krw) throw new Error("Invalid exchange-api data");
+                return data.usd.krw;
               }
             }
           ];
@@ -339,6 +405,12 @@
                 krwUsdRate = rate;
                 exchangeRateSource = source.name;
                 log.info("환율 업데이트 완료 (" + source.name + "): " + krwUsdRate.toFixed(2) + " KRW/USD");
+                // Persist rate to localStorage for offline caching
+                try {
+                  localStorage.setItem("btc-last-exchange-rate", JSON.stringify({rate: krwUsdRate, source: exchangeRateSource, time: Date.now()}));
+                } catch (e) {
+                  // ignore storage errors
+                }
                 return;
               }
             } catch (e) {
@@ -346,11 +418,20 @@
             }
           }
 
-          log.error("모든 환율 소스 실패, 기본값 사용");
-          exchangeRateSource = "기본값";
-          krwUsdRate = CONFIG.DEFAULT_KRW_USD_RATE;
+          log.error("모든 환율 소스 실패, 마지막 환율 유지");
         }
 
+        // Load cached rate before first fetch
+        try {
+          var cachedRate = JSON.parse(localStorage.getItem("btc-last-exchange-rate"));
+          if (cachedRate && cachedRate.rate) {
+            krwUsdRate = cachedRate.rate;
+            exchangeRateSource = cachedRate.source + " (캐시)";
+            log.info("캐시된 환율 로드: " + krwUsdRate.toFixed(2) + " (" + cachedRate.source + ")");
+          }
+        } catch (e) {
+          // ignore cache load errors
+        }
         fetchExchangeRate();
         addInterval(
           setInterval(fetchExchangeRate, CONFIG.EXCHANGE_RATE_UPDATE_INTERVAL)
@@ -359,7 +440,12 @@
         // ========== BTC 가격 ==========
         var ws = null;
         var lastPrice = 0;
+        var lastKRWPrice = 0;
+        var lastPriceUpdate = 0;
+        var staleTimer = null;
         var reconnectTimeout = null;
+        var pingIntervalId = null;
+        var pongTimeoutId = null;
         var reconnectAttempts = 0;
         var priceUpdateIntervalId = null;
         var isThrottled = false;
@@ -380,12 +466,24 @@
 
           setStatus("연결 중...", "");
 
-          ws = new WebSocket("wss://ws-api.binance.com/ws-api/v3");
+          ws = new WebSocket(CONFIG.BINANCE_WS_URL);
 
           ws.onopen = function () {
             log.info("WebSocket 연결 성공");
             reconnectAttempts = 0;
             setStatus("연결됨", "connected");
+            // Health check: start periodic ping
+            pingIntervalId = addInterval(setInterval(function() {
+              if (ws && ws.readyState === WebSocket.OPEN) {
+                ws.send(
+                  JSON.stringify({id: generateId(), method: "ping"})
+                );
+                pongTimeoutId = addTimeout(setTimeout(function() {
+                  log.warn("Ping 응답 없음. 재연결 시도");
+                  ws.close();
+                }, CONFIG.PONG_TIMEOUT));
+              }
+            }, CONFIG.PING_INTERVAL));
             ws.send(
               JSON.stringify({
                 id: generateId(),
@@ -416,6 +514,7 @@
 
             if (Object.keys(response.result).length === 0) {
               log.info("WebSocket 연결됨 (ping/pong)");
+              if (pongTimeoutId) { clearTimeout(pongTimeoutId); pongTimeoutId = null; }
               sendTickerRequest();
             } else if (response.result.symbol === CONFIG.BTC_SYMBOL) {
               updatePrice(response.result);
@@ -439,9 +538,9 @@
                 priceUpdateIntervalId = addInterval(
                   setInterval(sendTickerRequest, CONFIG.PRICE_UPDATE_INTERVAL * 2)
                 );
-              } else if (usage < 0.5 && isThrottled) {
+              } else if (usage < 0.3 && isThrottled) {
                 isThrottled = false;
-                log.info("Rate limit 여유 확보. 정상 빈도로 복구합니다.");
+                log.info("Rate limit 여유 확보. 정상 빈도로 복구합니다. (30% 미만)");
                 if (priceUpdateIntervalId) {
                   clearInterval(priceUpdateIntervalId);
                 }
@@ -453,6 +552,15 @@
           };
 
           ws.onclose = function (event) {
+            // Clean up health check timers on close
+            if (pingIntervalId) {
+              clearInterval(pingIntervalId);
+              pingIntervalId = null;
+            }
+            if (pongTimeoutId) {
+              clearTimeout(pongTimeoutId);
+              pongTimeoutId = null;
+            }
             log.warn("WebSocket 연결 종료:", event.code, event.reason);
             var delay = getReconnectDelay();
             reconnectAttempts++;
@@ -499,6 +607,8 @@
           }
 
           var priceUSD = parseFloat(data.lastPrice);
+          // 기록된 가격 업데이트 시각 저장
+          lastPriceUpdate = Date.now();
           var priceKRW = priceUSD * krwUsdRate;
           var percentChange = parseFloat(data.priceChangePercent);
 
@@ -533,8 +643,8 @@
             maximumFractionDigits: 0,
           });
 
-          if (exchangeRateSource === "기본값") {
-            elPriceKRW.innerHTML = formattedPriceKRW + '<span class="krw-estimated">(추정)</span>';
+          if (!exchangeRateSource) {
+            elPriceKRW.innerHTML = formattedPriceKRW + '<span class="krw-estimated">(환율 로딩 중)</span>';
           } else {
             elPriceKRW.textContent = formattedPriceKRW;
           }
@@ -564,6 +674,7 @@
           );
 
           lastPrice = priceUSD;
+          lastKRWPrice = priceKRW;
         }
 
         // WebSocket 연결 및 주기적 가격 업데이트
@@ -642,15 +753,6 @@
 
         enableWakeLock();
 
-        // ========== 두 번 클릭 시 밝기 조절 (컨텐츠 영역만) ==========
-        var light = true;
-
-        elContainer.addEventListener("dblclick", function () {
-          light = !light;
-          elContainer.style.setProperty("filter", "brightness(" + (light ? 100 : 50) + "%)", "important");
-          log.debug("밝기: " + (light ? "100%" : "50%"));
-        });
-
         // ========== 전체 화면 시 커서 숨김 ==========
         var cursorTimeout = null;
 
@@ -721,6 +823,9 @@
               }
               if (settings.interval) CONFIG.PRICE_UPDATE_INTERVAL = parseInt(settings.interval);
               if (settings.debug !== undefined) CONFIG.DEBUG_MODE = settings.debug;
+              if (settings.brightness !== undefined) {
+                elContainer.style.setProperty("filter", "brightness(" + settings.brightness + "%)", "important");
+              }
               log.info("설정 불러오기 완료:", settings);
             }
           } catch (e) {
@@ -731,7 +836,7 @@
         function saveSettings() {
           var ticker = elAdminSymbol.value.trim().toUpperCase();
           if (!ticker) {
-            alert("티커를 입력해주세요.");
+            showToast("티커를 입력해주세요.");
             return;
           }
 
@@ -739,14 +844,19 @@
           CONFIG.BTC_SYMBOL = binanceSymbol;
           CONFIG.PRICE_UPDATE_INTERVAL = parseInt(elAdminInterval.value);
           CONFIG.DEBUG_MODE = elAdminDebug.checked;
+          var brightness = parseInt(elAdminBrightness.value);
 
           var settings = {
             ticker: ticker,
             interval: CONFIG.PRICE_UPDATE_INTERVAL,
-            debug: CONFIG.DEBUG_MODE
+            debug: CONFIG.DEBUG_MODE,
+            brightness: brightness
           };
           localStorage.setItem("btc-kiosk-settings", JSON.stringify(settings));
           log.info("설정 저장 완료:", settings);
+
+          // 밝기 적용
+          elContainer.style.setProperty("filter", "brightness(" + brightness + "%)", "important");
 
           // 아이콘 업데이트
           updateIcon(ticker);
@@ -763,7 +873,7 @@
           connectWebSocket();
 
           hideAdminPanel();
-          alert("설정이 저장되었습니다.");
+          showToast("설정이 저장되었습니다.");
         }
 
         function showAdminPanel() {
@@ -771,6 +881,11 @@
           elAdminSymbol.value = currentTicker;
           elAdminInterval.value = CONFIG.PRICE_UPDATE_INTERVAL;
           elAdminDebug.checked = CONFIG.DEBUG_MODE;
+          // Read current brightness from CSS filter
+          var currentFilter = elContainer.style.getPropertyValue("filter");
+          var match = currentFilter.match(/brightness\((\d+)%\)/);
+          elAdminBrightness.value = match ? parseInt(match[1]) : 100;
+          elBrightnessValue.textContent = elAdminBrightness.value + "%";
           elAdminPanel.style.display = "flex";
         }
 
@@ -778,11 +893,33 @@
           elAdminPanel.style.display = "none";
         }
 
+        // Toast UX helper
+        function showToast(msg) {
+          var toast = document.getElementById("toast");
+          toast.textContent = msg;
+          toast.className = "show";
+          setTimeout(function() { toast.className = ""; }, 2000);
+        }
+
         // 상태 표시줄 클릭으로 관리자 패널 열기
         elStatus.addEventListener("click", showAdminPanel);
 
         elAdminSave.addEventListener("click", saveSettings);
         elAdminClose.addEventListener("click", hideAdminPanel);
+
+        // Brightness live preview
+        elAdminBrightness.addEventListener("input", function() {
+          var val = elAdminBrightness.value;
+          elContainer.style.setProperty("filter", "brightness(" + val + "%)", "important");
+          elBrightnessValue.textContent = val + "%";
+        });
+
+        // ESC key to close admin panel
+        document.addEventListener("keydown", function(e) {
+          if (e.key === "Escape" && elAdminPanel.style.display === "flex") {
+            hideAdminPanel();
+          }
+        });
 
         // 초기 설정 로드
         loadSettings();
