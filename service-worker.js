@@ -1,7 +1,7 @@
 // Increment the version when changing the offline shell.
 const SCOPE = new URL(self.registration.scope);
 const CACHE_PREFIX = "btc-price-kiosk:" + SCOPE.pathname + ":";
-const CACHE_NAME = CACHE_PREFIX + "v5";
+const CACHE_NAME = CACHE_PREFIX + "v6";
 const INDEX_URL = new URL("index.html", SCOPE).href;
 const SHELL_URLS = ["index.html", "manifest.json", "bitcoin-btc-logo.svg", "wake-lock.js", "market-data.js",
   "icons/apple-touch-icon-180.png", "icons/apple-touch-icon-167.png", "icons/apple-touch-icon-152.png",

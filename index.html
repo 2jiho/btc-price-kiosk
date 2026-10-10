@@ -3,7 +3,9 @@
   <head>
     <meta charset="UTF-8" />
     <meta http-equiv="Content-Security-Policy" content="default-src 'self'; connect-src 'self' https://cdn.jsdelivr.net wss://api.upbit.com wss://stream.binance.com:443; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' https://cdn.jsdelivr.net data:; manifest-src 'self';" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black" />
     <link rel="manifest" href="manifest.json" />
     <link rel="apple-touch-icon" sizes="180x180" href="./icons/apple-touch-icon-180.png" />
     <link rel="apple-touch-icon" sizes="167x167" href="./icons/apple-touch-icon-167.png" />
@@ -25,6 +27,10 @@
       }
       :root {
         --reference-size: calc(min(1vw, 2vh));
+        --safe-top: env(safe-area-inset-top, 0px);
+        --safe-right: env(safe-area-inset-right, 0px);
+        --safe-bottom: env(safe-area-inset-bottom, 0px);
+        --safe-left: env(safe-area-inset-left, 0px);
       }
 
       body {
@@ -32,6 +38,7 @@
         justify-content: center;
         align-items: center;
         height: 100vh;
+        height: 100dvh;
         width: 100vw;
         background-color: #000;
         color: #ffffff;
@@ -75,9 +82,14 @@
         color: gray;
       }
       #status-indicator {
-        position: fixed;
-        top: 8px;
-        right: 12px;
+        min-width: 0;
+        min-height: 44px;
+        flex: 1 1 180px;
+        display: flex;
+        align-items: center;
+        justify-content: flex-end;
+        text-align: right;
+        overflow-wrap: anywhere;
         font-size: 12px;
         color: #666;
         opacity: 0.6;
@@ -122,8 +134,9 @@
       }
       #admin-panel {
         position: fixed;
-        top: 50%;
-        left: 50%;
+        top: calc(var(--safe-top) + (100vh - var(--safe-top) - var(--safe-bottom)) / 2);
+        top: calc(var(--safe-top) + (100dvh - var(--safe-top) - var(--safe-bottom)) / 2);
+        left: calc(var(--safe-left) + (100vw - var(--safe-left) - var(--safe-right)) / 2);
         transform: translate(-50%, -50%);
         background: #1a1a1a;
         border: 1px solid #444;
@@ -133,8 +146,13 @@
         flex-direction: column;
         gap: 12px;
         z-index: 2000;
-        min-width: 320px;
+        box-sizing: border-box;
+        width: min(370px, calc(100vw - var(--safe-left) - var(--safe-right) - 24px));
+        max-height: calc(100vh - var(--safe-top) - var(--safe-bottom) - 24px);
+        max-height: calc(100dvh - var(--safe-top) - var(--safe-bottom) - 24px);
+        overflow: auto;
       }
+      #admin-panel > * { flex-shrink: 0; }
       #admin-panel h2 {
         margin: 0 0 4px 0;
         color: #fff;
@@ -193,8 +211,9 @@
       /* Toast notification for admin UX */
       #toast {
         position: fixed;
-        bottom: 20px;
-        left: 50%;
+        bottom: calc(20px + var(--safe-bottom));
+        left: calc(var(--safe-left) + (100vw - var(--safe-left) - var(--safe-right)) / 2);
+        max-width: calc(100vw - var(--safe-left) - var(--safe-right) - 64px);
         transform: translateX(-50%);
         background: #333;
         color: #fff;
@@ -209,9 +228,9 @@
       #toast.show { opacity: 1; }
       #wake-lock-panel {
         position: fixed;
-        bottom: max(8px, env(safe-area-inset-bottom));
-        left: 12px;
-        right: 12px;
+        bottom: calc(8px + var(--safe-bottom));
+        left: calc(12px + var(--safe-left));
+        right: calc(12px + var(--safe-right));
         color: #aaa;
         font-size: 12px;
         z-index: 1500;
@@ -225,13 +244,23 @@
         border: 1px solid #888;
         border-radius: 6px;
       }
-      #currency-controls {
+      #top-controls {
         position: fixed;
-        top: max(8px, env(safe-area-inset-top));
-        left: 12px;
+        top: calc(8px + var(--safe-top));
+        left: calc(12px + var(--safe-left));
+        right: calc(12px + var(--safe-right));
         display: flex;
-        gap: 6px;
+        flex-wrap: wrap;
+        align-items: flex-start;
+        justify-content: space-between;
+        gap: 8px 12px;
         z-index: 1500;
+      }
+      #currency-controls {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 6px;
+        max-width: 100%;
       }
       #currency-controls button, #market-retry {
         background: #111;
@@ -243,12 +272,6 @@
       }
       #currency-controls button[aria-pressed="true"] { color: #fff; border-color: #f7931a; }
       .admin-note { color: #aaa; font-size: 12px; }
-      #admin-panel { min-width: 0; width: min(320px, calc(100vw - 64px)); }
-      #status-indicator { z-index: 1500; max-width: 45vw; }
-      @media (max-width: 600px) {
-        #status-indicator { top: 62px; max-width: calc(100vw - 24px); }
-        #currency-controls { left: 8px; }
-      }
       button:focus-visible, #status-indicator:focus-visible { outline: 2px solid #fff; }
       /* Hidden controls cannot intercept taps or enter the tab order.
          Tab reveals them before the browser moves keyboard focus. */
@@ -262,7 +285,10 @@
       }
       #status-overlay {
         top: auto;
-        bottom: 18%;
+        left: calc(12px + var(--safe-left));
+        right: calc(12px + var(--safe-right));
+        width: auto;
+        bottom: calc(18% + var(--safe-bottom));
         height: auto;
         background: transparent;
         backdrop-filter: none;
@@ -297,9 +323,12 @@
       <button id="admin-save">저장 및 적용</button>
       <button id="admin-close">닫기</button>
     </div>
-    <div id="currency-controls" role="group" aria-label="표시 통화 및 거래소 선택">
-      <button type="button" data-currency="KRW" aria-pressed="true">원화 · 업비트</button>
-      <button type="button" data-currency="USDT" aria-pressed="false">USDT · 바이낸스</button>
+    <div id="top-controls">
+      <div id="currency-controls" role="group" aria-label="표시 통화 및 거래소 선택">
+        <button type="button" data-currency="KRW" aria-pressed="true">원화 · 업비트</button>
+        <button type="button" data-currency="USDT" aria-pressed="false">USDT · 바이낸스</button>
+      </div>
+      <div id="status-indicator" role="button" tabindex="0" aria-label="관리자 설정 열기" aria-live="polite"></div>
     </div>
     <div id="toast" role="status"></div>
     <div id="wake-lock-panel">
@@ -307,7 +336,6 @@
       <button id="wake-lock-retry" type="button" hidden>화면 켜짐 유지 다시 시도</button>
       <button id="app-update" type="button" hidden>새 버전 적용 (새로고침)</button>
     </div>
-    <div id="status-indicator" role="button" tabindex="0" aria-label="관리자 설정 열기" aria-live="polite"></div>
     <div id="status-overlay">
       <h1 id="overlay-title">새 시세 대기</h1>
       <p id="overlay-msg">시세 수신을 기다립니다.</p>

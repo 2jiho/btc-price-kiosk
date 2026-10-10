@@ -87,3 +87,16 @@ iPadOS 27.0.1 실기기는 검증하지 못했습니다. 특정 OS 버그로 단
 아이콘 5개 전체 픽셀은 alpha=255이며 검정/어두운 픽셀은 없습니다. 각 네 모서리는 RGBA(247,147,26,255)입니다. 512px 심볼의 최대 반지름은 166.83px로 maskable 안전 반지름 204.8px보다 작습니다. 원본 흰색 SVG 경로 동일성 및 PNG 치수도 단위 검사했습니다. 근거: evidence/icon-render.txt, icon-pixel-checks.json, final-unit-tests.txt, final-browser-tests.txt.
 
 Apple 크기는 [Apple Web Clip 아이콘 지정](https://developer.apple.com/library/archive/documentation/AppleApplications/Reference/SafariWebContent/ConfiguringWebApplications/ConfiguringWebApplications.html), 안전 영역은 [W3C manifest](https://www.w3.org/TR/appmanifest/#icon-masks-and-safe-zone)를 따릅니다. 설치 당시의 홈 화면 아이콘이 앱 코드/서비스 워커 갱신으로 자동 교체된다는 보장은 하지 않습니다. 새 아이콘이 보이지 않으면 사이트에서 새로 추가해 확인할 수 있으며, 기존 항목 삭제 시 저장소와 설정 유지도 보장하지 않습니다. iPad 실기기 검증은 남아 있습니다.
+
+
+## iPad 상태표시줄과 조작 UI 겹침 수정
+
+사용자 실기기 피드백 후 상단 위치를 재검토했습니다. 기존 상태 표시는 top 8px/62px 고정이며 통화 버튼과 독립 배치되어 safe area 및 서로의 크기를 고려하지 않았습니다. 통화 버튼은 상단 inset만 사용하고 좌우 inset은 없었습니다. 이 코드상 배치 문제를 수정했으며 특정 iPadOS 버그로 단정하지 않습니다.
+
+viewport-fit=cover, apple-mobile-web-app-capable=yes, 불투명 black 상태표시줄을 명시했습니다. [Apple 문서](https://developer.apple.com/library/archive/documentation/AppleApplications/Reference/SafariHTMLRef/Articles/MetaTags.html)는 black/default의 콘텐츠가 상태표시줄 아래에 배치됨을 설명합니다. [WebKit safe area](https://webkit.org/blog/7929/designing-websites-for-iphone-x/)에 따라 네 방향 env 값을 공통 CSS 변수로 적용하고 inset 이후 여백을 추가합니다. 0 inset에는 별도의 고정 상태표시줄 높이를 추측해 더하지 않습니다.
+
+상단은 한 줄바꿈 컨테이너로 합쳐 버튼/상태가 서로 겹치지 않게 했습니다. 하단 안내, toast, 오류 표시의 좌우/하단과 설정 창의 중심·최대 치수에도 적용했습니다. 설정 창은 높이가 부족하면 스크롤되어 닫기 버튼에 접근할 수 있습니다. 100dvh를 사용하며 100vh fallback을 둡니다.
+
+단위 28개, JS/diff 검사 및 전체 Chrome 회귀 통과. 별도 8개 레이아웃(768x1024 세로, 1024x768 가로, 비대칭 inset, iPad 양 방향 0 inset, 1440x900 데스크톱, 390x844 폰, 1024x360 짧은 가로)에서 버튼/상태 겹침 부재, 상·좌우·하 안전 경계, 설정 창과 닫기 버튼 접근, 포커스/설정 유지, 5초 자동 숨김을 확인했습니다. 동일 페이지에서 크기를 바꿔 방향 전환에 해당하는 CSS 재계산도 검사했습니다. Chrome의 CSS 변수에 inset을 주입한 레이아웃 시뮬레이션이며 iPad 시스템 UI 재현을 주장하지 않습니다.
+
+SW v6이며 실제 배포 v5, 이전 v3 및 원본 v1 각각에서 root/index 갱신, offline PNG/셸, 다른 앱 캐시 보존이 통과했습니다. 검증 근거는 evidence/safe-area-unit-tests.txt, safe-area-browser-tests.txt, safe-area-layouts.json, safe-area-ipad-portrait.png 및 safe-area-ipad-landscape.png입니다. iPadOS 실기기 직접 확인은 남아 있습니다.

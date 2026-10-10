@@ -23,7 +23,7 @@ const server = http.createServer((req, res) => {
   let content = old && !name.startsWith('icons/') && !['wake-lock.js', 'market-data.js'].includes(name) ? original(name) : fs.readFileSync(path.join(root, name));
   serverHistory.push({ pathname, old, swRevision, htmlNew: name === 'index.html' ? content.toString().includes('id="currency-controls"') : null });
   if (htmlRevision && name === 'index.html') content = content.toString().replace('</body>', '<div id="html-only-update" hidden></div></body>');
-  if (swRevision && name === 'service-worker.js') content = content.toString().replace(' + "v5"', ' + "v6"');
+  if (swRevision && name === 'service-worker.js') content = content.toString().replace(' + "v6"', ' + "v7"');
   res.end(content);
 });
 async function deterministicNetwork(context) {
@@ -253,8 +253,67 @@ async function validateIcons(page) {
     await page.waitForFunction(() => document.getElementById('app-update').hidden);
     console.log('PASS native Wake Lock acquire/release/retry and user-applied SW refresh');
     await context.close(); swRevision = false;
+    const layoutContext = await browser.newContext({ hasTouch: true });
+    await deterministicNetwork(layoutContext);
+    const layoutPage = await layoutContext.newPage();
+    await layoutPage.clock.install(); await layoutPage.goto(base); await live(layoutPage);
+    assert.match(await layoutPage.locator('meta[name="viewport"]').getAttribute('content'), /viewport-fit=cover/);
+    assert.equal(await layoutPage.locator('meta[name="apple-mobile-web-app-status-bar-style"]').getAttribute('content'), 'black');
+    const layoutRecords = [];
+    for (const scenario of [
+      { name: 'ipad-portrait', width: 768, height: 1024, top: 24, right: 0, bottom: 20, left: 0 },
+      { name: 'ipad-landscape', width: 1024, height: 768, top: 24, right: 24, bottom: 20, left: 24 },
+      { name: 'landscape-asymmetric', width: 1194, height: 834, top: 32, right: 16, bottom: 21, left: 44 },
+      { name: 'ipad-portrait-zero', width: 768, height: 1024, top: 0, right: 0, bottom: 0, left: 0 },
+      { name: 'ipad-landscape-zero', width: 1024, height: 768, top: 0, right: 0, bottom: 0, left: 0 },
+      { name: 'desktop-zero', width: 1440, height: 900, top: 0, right: 0, bottom: 0, left: 0 },
+      { name: 'phone-portrait', width: 390, height: 844, top: 44, right: 0, bottom: 34, left: 0 },
+      { name: 'short-landscape', width: 1024, height: 360, top: 24, right: 24, bottom: 20, left: 24 },
+    ]) {
+      await layoutPage.setViewportSize({ width: scenario.width, height: scenario.height });
+      // Chrome cannot supply iPad system env values: inject the shared CSS
+      // variables to test layout arithmetic, wrapping and orientation changes.
+      await layoutPage.evaluate(s => {
+        for (const side of ['top', 'right', 'bottom', 'left']) document.documentElement.style.setProperty('--safe-' + side, s[side] + 'px');
+        document.getElementById('wake-lock-retry').hidden = false;
+        document.getElementById('app-update').hidden = false;
+      }, scenario);
+      await layoutPage.locator('#price-main').tap();
+      const header = await layoutPage.locator('#top-controls').boundingBox();
+      const currency = await layoutPage.locator('#currency-controls').boundingBox();
+      const status = await layoutPage.locator('#status-indicator').boundingBox();
+      const bottom = await layoutPage.locator('#wake-lock-panel').boundingBox();
+      const inside = box => {
+        assert.ok(box.x >= scenario.left + 11, scenario.name + ' left');
+        assert.ok(box.x + box.width <= scenario.width - scenario.right - 11, scenario.name + ' right');
+        assert.ok(box.y >= scenario.top + 7, scenario.name + ' top');
+        assert.ok(box.y + box.height <= scenario.height - scenario.bottom - 7, scenario.name + ' bottom');
+      };
+      [header, currency, status, bottom].forEach(inside);
+      const separated = currency.x + currency.width <= status.x || status.x + status.width <= currency.x ||
+        currency.y + currency.height <= status.y || status.y + status.height <= currency.y;
+      assert.ok(separated, scenario.name + ' header controls overlap');
+      assert.equal(header.y, scenario.top + 8);
+      await layoutPage.locator('#status-indicator').tap();
+      const dialog = await layoutPage.locator('#admin-panel').boundingBox(); inside(dialog);
+      await layoutPage.locator('#admin-close').scrollIntoViewIfNeeded();
+      inside(await layoutPage.locator('#admin-close').boundingBox());
+      await layoutPage.clock.fastForward(6000);
+      assert.equal(await layoutPage.locator('#admin-panel').isVisible(), true);
+      assert.equal(await layoutPage.locator('#currency-controls').isVisible(), true);
+      if (scenario.name === 'ipad-portrait' || scenario.name === 'ipad-landscape') {
+        await layoutPage.screenshot({ path: path.join(root, `../evidence/safe-area-${scenario.name}.png`) });
+      }
+      await layoutPage.keyboard.press('Escape');
+      await layoutPage.locator('#price-main').tap(); await layoutPage.clock.fastForward(6000);
+      assert.equal(await layoutPage.locator('#currency-controls').isVisible(), false);
+      layoutRecords.push({ scenario, header, currency, status, bottom, dialog });
     }
-    for (const sourceRef of [baseline, '0282223d45a32e418f1ce8b3c3b36de7af164d5e']) {
+    fs.writeFileSync(path.join(root, '../evidence/safe-area-layouts.json'), JSON.stringify(layoutRecords, null, 2));
+    console.log('PASS safe area: 8 portrait/landscape/desktop/zero/asymmetric/short layouts, header separation, dialog and close bounds, hide/focus behavior (CSS inset simulation, not iPad OS)');
+    await layoutContext.close();
+    }
+    for (const sourceRef of [baseline, '0282223d45a32e418f1ce8b3c3b36de7af164d5e', '616f8c48af4c9a64eb5085cc876e7f83476b484f']) {
     baselineRef = sourceRef;
     for (const entry of ['', 'index.html']) {
       old = true; htmlRevision = false;
@@ -270,7 +329,7 @@ async function validateIcons(page) {
       await p.reload({ waitUntil: 'domcontentloaded' });
       await p.evaluate(async () => { const cache = await caches.open('another-app-v1'); await cache.put('/another-app/', new Response('keep')); });
       if (sourceRef === baseline) assert.equal(await p.locator('#currency-controls').count(), 0);
-      else assert.equal(await p.locator('#currency-controls').isVisible(), true);
+      else assert.equal(await p.locator('#currency-controls').isVisible(), sourceRef === '0282223d45a32e418f1ce8b3c3b36de7af164d5e');
       old = false;
       await p.evaluate(async () => {
         window.previousController = navigator.serviceWorker.controller;
@@ -285,7 +344,7 @@ async function validateIcons(page) {
           channel.port1.onmessage = event => { clearTimeout(timer); channel.port1.close(); resolve(event.data); };
           navigator.serviceWorker.controller.postMessage({ type: 'GET_APP_VERSION' }, [channel.port2]);
         });
-        return version?.cacheName.endsWith(':v5');
+        return version?.cacheName.endsWith(':v6');
       });
       await p.reload({ waitUntil: 'domcontentloaded' });
       try { await p.waitForSelector('#currency-controls', { state: 'attached', timeout: 10000 }); }
@@ -306,10 +365,10 @@ async function validateIcons(page) {
       htmlRevision = true;
       await p.goto(base); assert.equal(await p.locator('#html-only-update').count(), 1);
       await p.goto(base + 'index.html'); assert.equal(await p.locator('#html-only-update').count(), 1);
-      const keys = await p.evaluate(async () => { const n = (await caches.keys()).find(n => n.endsWith(':v5')); return (await (await caches.open(n)).keys()).map(r => r.url); });
+      const keys = await p.evaluate(async () => { const n = (await caches.keys()).find(n => n.endsWith(':v6')); return (await (await caches.open(n)).keys()).map(r => r.url); });
       assert.equal(keys.length, 10); assert.equal(keys.some(url => url === base), false);
       await waitForAsyncState(p, async () => {
-        const name = (await caches.keys()).find(n => n.endsWith(':v5'));
+        const name = (await caches.keys()).find(n => n.endsWith(':v6'));
         const response = await (await caches.open(name)).match(new URL('index.html', location.href).href);
         return (await response.text()).includes('id="html-only-update"');
       });
@@ -317,7 +376,7 @@ async function validateIcons(page) {
       await validateIcons(p);
       assert.match(await p.locator('#status-indicator').textContent(), /오프라인/);
       await p.goto(base + 'index.html'); assert.equal(await p.locator('#html-only-update').count(), 1);
-      console.log(`PASS ${sourceRef === baseline ? 'v1' : 'v3'} -> v5 from ${entry || 'root'}: upgrade, root/index HTML refresh, offline shell (no cached market price), unrelated cache preserved`);
+      console.log(`PASS ${sourceRef === baseline ? 'v1' : sourceRef === '0282223d45a32e418f1ce8b3c3b36de7af164d5e' ? 'v3' : 'v5'} -> v6 from ${entry || 'root'}: upgrade, root/index HTML refresh, offline shell (no cached market price), unrelated cache preserved`);
       await c.close();
     }
     }
