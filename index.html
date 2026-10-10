@@ -5,6 +5,9 @@
     <meta http-equiv="Content-Security-Policy" content="default-src 'self'; connect-src 'self' https://cdn.jsdelivr.net wss://api.upbit.com wss://stream.binance.com:443; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' https://cdn.jsdelivr.net data:; manifest-src 'self';" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <link rel="manifest" href="manifest.json" />
+    <link rel="apple-touch-icon" sizes="180x180" href="./icons/apple-touch-icon-180.png" />
+    <link rel="apple-touch-icon" sizes="167x167" href="./icons/apple-touch-icon-167.png" />
+    <link rel="apple-touch-icon" sizes="152x152" href="./icons/apple-touch-icon-152.png" />
     <link
       rel="icon"
       href="./bitcoin-btc-logo.svg"
@@ -247,6 +250,28 @@
         #currency-controls { left: 8px; }
       }
       button:focus-visible, #status-indicator:focus-visible { outline: 2px solid #fff; }
+      /* Hidden controls cannot intercept taps or enter the tab order.
+         Tab reveals them before the browser moves keyboard focus. */
+      body:not(.controls-visible) #currency-controls,
+      body:not(.controls-visible) #wake-lock-panel,
+      body:not(.controls-visible) #status-indicator,
+      body:not(.controls-visible) #market-retry,
+      body:not(.controls-visible) #overlay-msg {
+        visibility: hidden;
+        pointer-events: none;
+      }
+      #status-overlay {
+        top: auto;
+        bottom: 18%;
+        height: auto;
+        background: transparent;
+        backdrop-filter: none;
+        pointer-events: none;
+      }
+      #status-overlay h1 { font-size: 16px; margin: 0 12px 6px; }
+      #status-overlay p { font-size: 12px; margin: 0 12px 6px; }
+      body.controls-visible #market-retry { pointer-events: auto; }
+      #container.price-unavailable #price-main { opacity: 0.55; }
       [hidden] { display: none !important; }
     </style>
   </head>
@@ -330,6 +355,53 @@
         var state = null, lastRendered = null, animationTimer = null, toastTimer = null;
         var cursorTimer = null, statusTimer = null, burninTimer = null, offsetX = 0, offsetY = 0;
         var adminReturnFocus = null;
+        var controlsTimer = null;
+        var revealOnlyClick = false;
+        var controlSelector = '#currency-controls, #wake-lock-panel, #status-indicator, #market-retry, #admin-panel';
+
+        function controlsInUse() {
+          return elAdminPanel.style.display === 'flex' ||
+            (document.activeElement && document.activeElement.closest(controlSelector));
+        }
+        function scheduleControlsHide() {
+          clearTimeout(controlsTimer); controlsTimer = null;
+          if (document.visibilityState !== 'visible' || controlsInUse()) return;
+          controlsTimer = setTimeout(function () {
+            controlsTimer = null;
+            if (!controlsInUse()) document.body.classList.remove('controls-visible');
+          }, 5000);
+        }
+        function revealControls() {
+          document.body.classList.add('controls-visible');
+          scheduleControlsHide();
+        }
+        document.addEventListener('pointerdown', function (event) {
+          revealOnlyClick = !document.body.classList.contains('controls-visible');
+          // Revealing beneath a finger must not activate the newly visible button
+          // on pointerup/click or leave it focused after that first tap.
+          if (revealOnlyClick) event.preventDefault();
+          if (!event.target.closest(controlSelector) && controlsInUse() && elAdminPanel.style.display !== 'flex') {
+            document.activeElement.blur();
+          }
+          revealControls();
+        });
+        document.addEventListener('click', function (event) {
+          if (revealOnlyClick && event.detail > 0) {
+            revealOnlyClick = false; event.preventDefault(); event.stopImmediatePropagation();
+          }
+        }, true);
+        document.addEventListener('pointercancel', function () { revealOnlyClick = false; });
+        document.addEventListener('keydown', function (event) {
+          if (event.key === 'Tab' || event.key === 'Enter' || event.key === ' ') revealControls();
+        }, true);
+        document.addEventListener('focusin', function (event) {
+          if (event.target.closest(controlSelector)) revealControls();
+        });
+        document.addEventListener('focusout', function () { queueMicrotask(scheduleControlsHide); });
+        document.addEventListener('visibilitychange', function () {
+          if (document.visibilityState === 'visible') scheduleControlsHide();
+          else { clearTimeout(controlsTimer); controlsTimer = null; }
+        });
 
         function formatPrice(tick) {
           return tick.selection.currency === "KRW" ? formatKRW.format(tick.price) : formatUSDT.format(tick.price) + " USDT";
@@ -399,6 +471,7 @@
           var text = state.selection.exchange + " · " + label;
           if (elStatus.textContent !== text) elStatus.textContent = text;
           elStatus.className = kind === "live" ? "connected" : kind === "connecting" || kind === "waiting" ? "" : "error";
+          elContainer.classList.toggle('price-unavailable', kind !== 'live');
           var problem = ["backoff", "error", "offline"].includes(kind);
           elOverlay.style.display = problem || (kind !== "live" && !!state.last) ? "flex" : "none";
           elOverlayTitle.textContent = kind === "error" ? "시세 오류" : kind === "offline" ? "오프라인" : "새 시세 대기";
@@ -461,6 +534,7 @@
         window.addEventListener("offline", function () { feed.setOnline(false); });
 
         function showAdminPanel() {
+          revealControls();
           adminReturnFocus = document.activeElement;
           elAdminSymbol.value = settings.ticker;
           elAdminDebug.checked = settings.debug;
@@ -472,6 +546,7 @@
           elAdminPanel.style.display = "none";
           elContainer.style.setProperty("filter", "brightness(" + settings.brightness + "%)");
           if (adminReturnFocus) adminReturnFocus.focus();
+          scheduleControlsHide();
         }
         document.getElementById("admin-save").addEventListener("click", function () {
           var ticker = elAdminSymbol.value.trim().toUpperCase();

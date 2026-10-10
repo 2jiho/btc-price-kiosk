@@ -8,21 +8,22 @@ const { execFileSync } = require('node:child_process');
 const { waitForAsyncState } = require('./browser-utils.cjs');
 const root = path.join(__dirname, '..');
 const baseline = '0348caff88ddf8880d50aaaaca58fc2855abbf93';
-const original = name => execFileSync('git', ['show', baseline + ':' + name], { cwd: root });
+let baselineRef = baseline;
+const original = name => execFileSync('git', ['show', baselineRef + ':' + name], { cwd: root });
 let old = false, htmlRevision = false, swRevision = false;
 const serverHistory = [];
 const server = http.createServer((req, res) => {
   const pathname = new URL(req.url, 'http://localhost').pathname;
   const name = pathname.replace(/^\/btc-price-kiosk\//, '') || 'index.html';
-  if (!['index.html', 'service-worker.js', 'manifest.json', 'bitcoin-btc-logo.svg', 'wake-lock.js', 'market-data.js'].includes(name)) {
+  if (!['index.html', 'service-worker.js', 'manifest.json', 'bitcoin-btc-logo.svg', 'wake-lock.js', 'market-data.js', 'icons/apple-touch-icon-152.png', 'icons/apple-touch-icon-167.png', 'icons/apple-touch-icon-180.png', 'icons/home-icon-192.png', 'icons/home-icon-512.png'].includes(name)) {
     res.writeHead(404); res.end(); return;
   }
-  const type = name.endsWith('.js') ? 'text/javascript' : name.endsWith('.html') ? 'text/html' : name.endsWith('.svg') ? 'image/svg+xml' : 'application/json';
+  const type = name.endsWith('.js') ? 'text/javascript' : name.endsWith('.html') ? 'text/html' : name.endsWith('.svg') ? 'image/svg+xml' : name.endsWith('.png') ? 'image/png' : 'application/json';
   res.setHeader('Content-Type', type + '; charset=utf-8'); res.setHeader('Cache-Control', 'no-cache');
-  let content = old && !['wake-lock.js', 'market-data.js'].includes(name) ? original(name) : fs.readFileSync(path.join(root, name));
+  let content = old && !name.startsWith('icons/') && !['wake-lock.js', 'market-data.js'].includes(name) ? original(name) : fs.readFileSync(path.join(root, name));
   serverHistory.push({ pathname, old, swRevision, htmlNew: name === 'index.html' ? content.toString().includes('id="currency-controls"') : null });
   if (htmlRevision && name === 'index.html') content = content.toString().replace('</body>', '<div id="html-only-update" hidden></div></body>');
-  if (swRevision && name === 'service-worker.js') content = content.toString().replace(' + "v3"', ' + "v4"');
+  if (swRevision && name === 'service-worker.js') content = content.toString().replace(' + "v5"', ' + "v6"');
   res.end(content);
 });
 async function deterministicNetwork(context) {
@@ -74,6 +75,38 @@ async function deterministicNetwork(context) {
 async function live(page) {
   await page.waitForFunction(() => document.getElementById('status-indicator').className === 'connected');
 }
+async function validateIcons(page) {
+  const report = await page.evaluate(async () => {
+    const manifest = await (await fetch('manifest.json')).json();
+    const sources = [...document.querySelectorAll('link[rel="apple-touch-icon"]')].map(el => el.href)
+      .concat(manifest.icons.map(icon => new URL(icon.src, location.href).href));
+    const result = [];
+    for (const src of sources) {
+      const image = new Image(); image.src = src; await image.decode();
+      const size = image.naturalWidth;
+      if (size !== image.naturalHeight) throw new Error('Non-square icon');
+      const canvas = document.createElement('canvas'); canvas.width = canvas.height = size;
+      const ctx = canvas.getContext('2d'); ctx.drawImage(image, 0, 0);
+      const pixels = ctx.getImageData(0, 0, size, size).data;
+      let radius = 0, symbolPixels = 0;
+      for (let i = 0; i < pixels.length; i += 4) {
+        if (pixels[i + 3] !== 255 || pixels[i] < 247 || pixels[i + 1] < 147 || pixels[i + 2] < 26) throw new Error('Transparent/dark icon pixel');
+        if (pixels[i] !== 247 || pixels[i + 1] !== 147 || pixels[i + 2] !== 26) {
+          symbolPixels++; const n = i / 4;
+          radius = Math.max(radius, Math.hypot(n % size + 0.5 - size / 2, Math.floor(n / size) + 0.5 - size / 2));
+        }
+      }
+      if (!symbolPixels || radius > size * 0.4) throw new Error('Invalid maskable safe area');
+      const corners = [[0, 0], [size - 1, 0], [0, size - 1], [size - 1, size - 1]].map(([x, y]) => Array.from(ctx.getImageData(x, y, 1, 1).data));
+      result.push({ src, size, corners, opaquePixels: size * size, symbolPixels, radius, safeRadius: size * 0.4 });
+    }
+    if (getComputedStyle(document.body).backgroundColor !== 'rgb(0, 0, 0)') throw new Error('Kiosk background changed');
+    return result;
+  });
+  assert.deepEqual(report.map(item => item.size), [180, 167, 152, 192, 512]);
+  for (const item of report) for (const corner of item.corners) assert.deepEqual(corner, [247, 147, 26, 255]);
+  return report;
+}
 (async () => {
   await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
   const base = `http://localhost:${server.address().port}/btc-price-kiosk/`;
@@ -89,23 +122,68 @@ async function live(page) {
     console.log('PASS wait regression: installed SDK async false returns immediately; corrected helper awaits three actual evaluations');
     await probeContext.close();
     if (process.env.SW_ONLY !== '1') {
-    const context = await browser.newContext({ viewport: { width: 1024, height: 768 } });
+    const context = await browser.newContext({ viewport: { width: 1024, height: 768 }, hasTouch: true });
     await deterministicNetwork(context);
     const page = await context.newPage(); const errors = [], requests = [];
     page.on('pageerror', error => errors.push(error.message)); page.on('request', request => requests.push(request.url()));
     await page.clock.install();
     await page.goto(base); await live(page);
+    fs.mkdirSync(path.join(root, '../evidence'), { recursive: true });
+    const iconReport = await validateIcons(page);
+    fs.writeFileSync(path.join(root, '../evidence/icon-pixel-checks.json'), JSON.stringify(iconReport, null, 2));
     assert.match(await page.locator('#price-main').textContent(), /98,000,000/);
     assert.equal(await page.locator('#change-label').textContent(), '전일 대비');
     assert.equal(await page.evaluate(() => sockets.length), 1);
     assert.equal(await page.evaluate(() => localStorage.getItem('btc-last-exchange-rate')), null);
     await page.waitForFunction(() => document.getElementById('wake-lock-status').textContent.includes('활성'));
+    assert.equal(await page.locator('#currency-controls').isVisible(), false);
+    assert.equal(await page.locator('#wake-lock-panel').isVisible(), false);
+    assert.equal(await page.locator('#status-indicator').isVisible(), false);
+    await page.keyboard.press('Tab');
+    assert.equal(await page.locator('#currency-controls').isVisible(), true);
+    assert.equal(await page.evaluate(() => document.activeElement.dataset.currency), 'KRW');
+    await page.clock.fastForward(6000);
+    assert.equal(await page.locator('#currency-controls').isVisible(), true);
+    await page.locator('#price-main').tap();
+    await page.clock.fastForward(6000);
+    assert.equal(await page.locator('#currency-controls').isVisible(), false);
+    await page.setViewportSize({ width: 390, height: 844 });
+    const tapPoint = await page.locator('[data-currency="USDT"]').evaluate(el => {
+      const r = el.getBoundingClientRect(); return { x: r.x + r.width / 2, y: r.y + r.height / 2 };
+    });
+    await page.touchscreen.tap(tapPoint.x, tapPoint.y);
+    assert.equal(await page.locator('[data-currency="KRW"]').getAttribute('aria-pressed'), 'true');
+    assert.equal(await page.locator('#currency-controls').isVisible(), true);
+    await page.locator('[data-currency="USDT"]').tap();
+    await live(page);
+    for (let i = 0; i < 5; i++) await page.locator('[data-currency="USDT"]').tap();
+    await page.clock.fastForward(6000);
+    assert.equal(await page.locator('#currency-controls').isVisible(), true);
+    assert.equal(await page.evaluate(() => sockets.filter(s => s.readyState !== 3).length), 1);
+    await page.locator('[data-currency="KRW"]').tap();
+    await page.clock.fastForward(11000); await live(page);
+    await page.locator('#price-main').tap(); await page.clock.fastForward(6000);
+    assert.equal(await page.locator('#currency-controls').isVisible(), false);
+    fs.mkdirSync(path.join(root, '../evidence'), { recursive: true });
+    await page.screenshot({ path: path.join(root, '../evidence/ui-mobile-hidden.png') });
+    await page.locator('#price-main').tap();
+    await page.screenshot({ path: path.join(root, '../evidence/ui-mobile-controls.png') });
+    await page.keyboard.press('Tab');
+    await page.locator('#status-indicator').focus(); await page.keyboard.press('Enter');
+    await page.clock.fastForward(6000);
+    assert.equal(await page.locator('#admin-panel').isVisible(), true);
+    assert.equal(await page.locator('#currency-controls').isVisible(), true);
+    await page.keyboard.press('Escape');
+    await page.locator('#price-main').tap(); await page.clock.fastForward(6000);
+    assert.equal(await page.locator('#currency-controls').isVisible(), false);
+    await page.setViewportSize({ width: 1024, height: 768 });
+    await page.locator('#price-main').click();
     await page.evaluate(() => testSentinel.release());
     await page.getByRole('button', { name: '화면 켜짐 유지 다시 시도' }).click();
     await page.waitForFunction(() => wakeRequests === 2 && document.getElementById('wake-lock-status').textContent.includes('활성'));
     fs.mkdirSync(path.join(root, '../evidence'), { recursive: true });
     await page.screenshot({ path: path.join(root, '../evidence/kiosk-krw.png') });
-    await page.evaluate(() => { suppressTicks = true; window.lateMessage = sockets[0].onmessage; window.lateClose = sockets[0].onclose; });
+    await page.evaluate(() => { suppressTicks = true; window.lateMessage = sockets.at(-1).onmessage; window.lateClose = sockets.at(-1).onclose; });
     await page.getByRole('button', { name: 'USDT · 바이낸스' }).click();
     assert.equal(await page.locator('#price-main').textContent(), '—');
     assert.equal(await page.locator('#price-source').textContent(), '바이낸스 · BTC/USDT');
@@ -139,13 +217,21 @@ async function live(page) {
     await page.evaluate(() => { suppressTicks = false; sockets.at(-1).emit(); }); await live(page);
     await page.evaluate(() => { suppressTicks = true; }); await page.clock.fastForward(16000);
     assert.match(await page.locator('#status-indicator').textContent(), /시세 업데이트 지연/);
+    await page.locator('#price-main').click(); await page.clock.fastForward(6000);
+    assert.equal(await page.locator('#currency-controls').isVisible(), false);
+    assert.equal(await page.locator('#overlay-title').isVisible(), true);
+    assert.equal(await page.locator('#overlay-msg').isVisible(), false);
+    assert.equal(await page.locator('#container').getAttribute('class'), 'price-unavailable');
     assert.match(await page.locator('#overlay-msg').textContent(), /마지막 시세: 70,000.10 USDT/);
     await page.evaluate(() => { suppressTicks = false; }); await page.clock.fastForward(3000); await live(page);
+    await page.keyboard.press('Tab');
     await page.locator('#status-indicator').focus(); await page.keyboard.press('Enter');
     await page.locator('#admin-symbol').fill('bad!'); await page.locator('#admin-save').click();
     assert.equal(await page.evaluate(() => document.getElementById('admin-panel').style.display), 'flex');
+    await page.evaluate(() => { suppressTicks = true; });
     await page.locator('#admin-symbol').fill('ETH'); await page.locator('#admin-save').click();
     assert.equal(await page.locator('#price-main').textContent(), '—');
+    await page.evaluate(() => { suppressTicks = false; });
     await page.clock.fastForward(3000); await live(page);
     assert.equal(await page.locator('#price-source').textContent(), '바이낸스 · ETH/USDT');
     // Raw stream's symbol is derived from its URL, as the real exchange does.
@@ -168,6 +254,8 @@ async function live(page) {
     console.log('PASS native Wake Lock acquire/release/retry and user-applied SW refresh');
     await context.close(); swRevision = false;
     }
+    for (const sourceRef of [baseline, '0282223d45a32e418f1ce8b3c3b36de7af164d5e']) {
+    baselineRef = sourceRef;
     for (const entry of ['', 'index.html']) {
       old = true; htmlRevision = false;
       const c = await browser.newContext(); await deterministicNetwork(c);
@@ -181,7 +269,9 @@ async function live(page) {
       });
       await p.reload({ waitUntil: 'domcontentloaded' });
       await p.evaluate(async () => { const cache = await caches.open('another-app-v1'); await cache.put('/another-app/', new Response('keep')); });
-      assert.equal(await p.locator('#currency-controls').count(), 0); old = false;
+      if (sourceRef === baseline) assert.equal(await p.locator('#currency-controls').count(), 0);
+      else assert.equal(await p.locator('#currency-controls').isVisible(), true);
+      old = false;
       await p.evaluate(async () => {
         window.previousController = navigator.serviceWorker.controller;
         await (await navigator.serviceWorker.getRegistration()).update();
@@ -195,10 +285,10 @@ async function live(page) {
           channel.port1.onmessage = event => { clearTimeout(timer); channel.port1.close(); resolve(event.data); };
           navigator.serviceWorker.controller.postMessage({ type: 'GET_APP_VERSION' }, [channel.port2]);
         });
-        return version?.cacheName.endsWith(':v3');
+        return version?.cacheName.endsWith(':v5');
       });
       await p.reload({ waitUntil: 'domcontentloaded' });
-      try { await p.waitForSelector('#currency-controls', { timeout: 10000 }); }
+      try { await p.waitForSelector('#currency-controls', { state: 'attached', timeout: 10000 }); }
       catch (error) {
         console.log('MIGRATION DIAGNOSTIC', entry || 'root', serverHistory.slice(-20), await p.evaluate(async () => {
           const records = [];
@@ -216,18 +306,20 @@ async function live(page) {
       htmlRevision = true;
       await p.goto(base); assert.equal(await p.locator('#html-only-update').count(), 1);
       await p.goto(base + 'index.html'); assert.equal(await p.locator('#html-only-update').count(), 1);
-      const keys = await p.evaluate(async () => { const n = (await caches.keys()).find(n => n.endsWith(':v3')); return (await (await caches.open(n)).keys()).map(r => r.url); });
-      assert.equal(keys.length, 5); assert.equal(keys.some(url => url === base), false);
+      const keys = await p.evaluate(async () => { const n = (await caches.keys()).find(n => n.endsWith(':v5')); return (await (await caches.open(n)).keys()).map(r => r.url); });
+      assert.equal(keys.length, 10); assert.equal(keys.some(url => url === base), false);
       await waitForAsyncState(p, async () => {
-        const name = (await caches.keys()).find(n => n.endsWith(':v3'));
+        const name = (await caches.keys()).find(n => n.endsWith(':v5'));
         const response = await (await caches.open(name)).match(new URL('index.html', location.href).href);
         return (await response.text()).includes('id="html-only-update"');
       });
       await c.setOffline(true); await p.goto(base); assert.equal(await p.locator('#html-only-update').count(), 1);
+      await validateIcons(p);
       assert.match(await p.locator('#status-indicator').textContent(), /오프라인/);
       await p.goto(base + 'index.html'); assert.equal(await p.locator('#html-only-update').count(), 1);
-      console.log(`PASS v1 -> v3 from ${entry || 'root'}: upgrade, root/index HTML refresh, offline shell (no cached market price), unrelated cache preserved`);
+      console.log(`PASS ${sourceRef === baseline ? 'v1' : 'v3'} -> v5 from ${entry || 'root'}: upgrade, root/index HTML refresh, offline shell (no cached market price), unrelated cache preserved`);
       await c.close();
+    }
     }
     old = false; htmlRevision = false;
     if (process.env.LIVE_NETWORK === '1' && process.env.SW_ONLY !== '1') {
@@ -235,6 +327,7 @@ async function live(page) {
       const p = await c.newPage(); const socketErrors = [];
       p.on('console', msg => { if (msg.type() === 'error') socketErrors.push(msg.text()); });
       await p.goto(base);
+      await p.locator('#price-main').click();
       for (const currency of ['KRW', 'USDT']) {
         await p.locator(`[data-currency="${currency}"]`).click();
         try {

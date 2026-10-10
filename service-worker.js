@@ -1,9 +1,11 @@
 // Increment the version when changing the offline shell.
 const SCOPE = new URL(self.registration.scope);
 const CACHE_PREFIX = "btc-price-kiosk:" + SCOPE.pathname + ":";
-const CACHE_NAME = CACHE_PREFIX + "v3";
+const CACHE_NAME = CACHE_PREFIX + "v5";
 const INDEX_URL = new URL("index.html", SCOPE).href;
-const SHELL_URLS = ["index.html", "manifest.json", "bitcoin-btc-logo.svg", "wake-lock.js", "market-data.js"]
+const SHELL_URLS = ["index.html", "manifest.json", "bitcoin-btc-logo.svg", "wake-lock.js", "market-data.js",
+  "icons/apple-touch-icon-180.png", "icons/apple-touch-icon-167.png", "icons/apple-touch-icon-152.png",
+  "icons/home-icon-192.png", "icons/home-icon-512.png"]
   .map(function (path) { return new URL(path, SCOPE).href; });
 self.addEventListener("message", function (event) {
   if (event.data && event.data.type === "GET_APP_VERSION" && event.ports && event.ports[0]) {

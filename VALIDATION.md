@@ -61,3 +61,29 @@ iPadOS 27.0.1 실기기는 검증하지 못했습니다. 특정 OS 버그로 단
 - [업비트 연결 유지](https://docs.upbit.com/kr/docs/websocket-best-practice), [text PING](https://global-docs.upbit.com/reference/websocket-guide): idle 및 heartbeat.
 - [바이낸스 스트림](https://developers.binance.com/en/docs/products/spot/web-socket-streams): 24hrTicker, 1초 push, 24시간 종료, PING/PONG, 연결/메시지 제한.
 - [WakeLockSentinel 해제](https://developer.mozilla.org/en-US/docs/Web/API/WakeLockSentinel/released), [SW lifecycle](https://developer.mozilla.org/en-US/docs/Web/API/Service_Worker_API/Using_Service_Workers).
+
+
+## 버튼 자동 숨김 변경 (로컬, 미게시)
+
+- 평소 통화 버튼, Wake Lock/업데이트 안내와 설정 진입 표시를 숨깁니다. 화면 탭/클릭 또는 Tab 키로 나타나며 5초 뒤 숨깁니다. 조작 요소의 포커스 또는 설정 패널이 열려 있으면 유지합니다. 빈 화면을 탭하면 조작 포커스를 해제합니다.
+- 숨겨진 요소는 visibility/pointer-events로 포인터와 탭 순서에서 제외합니다. Tab 입력은 기본 포커스 이동 전에 UI를 드러냅니다. 첫 터치가 새로 나타난 버튼을 같은 제스처로 실행하지 않도록 해당 클릭을 차단합니다.
+- 시세 오류·지연 때는 가격을 흐리게 하고 상태 제목을 계속 표시합니다. 상세 안내와 재시도 버튼은 화면 조작 후 접근합니다. 시스템 거부를 재시도 루프로 우회하지 않습니다.
+- SW 셸 버전을 v4로 올렸고 실제 배포된 v3와 원본 v1 각각에서 root/index 갱신, HTML-only 갱신, 오프라인 셸과 타 앱 캐시 보존을 Chrome에서 검증했고 모두 통과했습니다.
+- 단위 회귀 26개, 인라인 JS 및 테스트 구문, diff 검사 통과. Chrome에서 390px 터치 첫 탭·반복 탭, 5초 자동 숨김, Tab 진입·포커스 유지, 설정 패널/Escape·복귀, stale 최소 표시 및 기존 통화·Wake Lock·업데이트 동작을 검증했고 전체 실행이 종료 코드 0으로 통과했습니다.
+- 아이콘 파일과 manifest, iPad 상태표시줄 설정은 변경하지 않았습니다. 배포 SVG 모서리는 RGBA(0,0,0,0), 주황색 원은 (247,147,26,255), 중앙 ₿는 (255,255,255,255)였습니다. apple-touch-icon 및 apple-mobile-web-app-capable/status-bar-style은 배포 HTML에 없습니다. display는 fullscreen이며 앱 배경 색은 검정입니다. 실기기 아이콘 선택 및 시스템 상태표시줄 동작은 미확인입니다.
+- 이 변경은 로컬 수정이며 push/배포하지 않았습니다. iPad 실기기 검증은 남아 있습니다.
+
+근거 문서: [WebKit 홈 화면 앱과 manifest 아이콘 지원/Apple touch icon 우선순위](https://webkit.org/blog/13878/web-push-for-web-apps-on-ios-and-ipados/#new-fallback-icon), [Apple 브라우저 UI 숨김 및 상태표시줄 설정](https://developer.apple.com/library/archive/documentation/AppleApplications/Reference/SafariWebContent/ConfiguringWebApplications/ConfiguringWebApplications.html). SVG는 manifest와 favicon에 공통 지정되며, 시스템 상태표시줄을 숨긴다는 보장은 추가하지 않았습니다.
+
+현재 검증 자료: evidence/ui-unit-tests.txt, ui-browser-tests.txt, ui-mobile-hidden.png, ui-mobile-controls.png, ui-controls.patch, ui-verification.json.
+
+
+## 최종 아이콘·버튼 변경 및 게시 검증
+
+이 절은 앞 절의 로컬 미게시 상태를 대체합니다. 사용자의 게시 승인 후 기존 main 루트 Pages 방식을 유지하여 게시합니다. 홈 화면 아이콘은 별도 SVG 원본과 Apple PNG 152/167/180px, manifest PNG 192/512px로 제작했습니다. 기존 흰색 경로를 그대로 보존하며 원형 로고 파일/키오스크 검정 배경/시스템 상태표시줄 설정은 유지했습니다.
+
+최종 단위 회귀 28개, JavaScript 및 diff 검사 통과. Chrome 전체 회귀(터치 최초 표시/반복 탭, 키보드·포커스, 자동 숨김, 설정, 시세 지연, 통화, Wake Lock, 사용자 업데이트) 통과. v1/v3 각각 root/index에서 v5 전환, HTML-only 갱신, offline PNG 5개와 셸 10개, 타 앱 캐시 보존을 검증했고 종료 코드 0으로 통과했습니다.
+
+아이콘 5개 전체 픽셀은 alpha=255이며 검정/어두운 픽셀은 없습니다. 각 네 모서리는 RGBA(247,147,26,255)입니다. 512px 심볼의 최대 반지름은 166.83px로 maskable 안전 반지름 204.8px보다 작습니다. 원본 흰색 SVG 경로 동일성 및 PNG 치수도 단위 검사했습니다. 근거: evidence/icon-render.txt, icon-pixel-checks.json, final-unit-tests.txt, final-browser-tests.txt.
+
+Apple 크기는 [Apple Web Clip 아이콘 지정](https://developer.apple.com/library/archive/documentation/AppleApplications/Reference/SafariWebContent/ConfiguringWebApplications/ConfiguringWebApplications.html), 안전 영역은 [W3C manifest](https://www.w3.org/TR/appmanifest/#icon-masks-and-safe-zone)를 따릅니다. 설치 당시의 홈 화면 아이콘이 앱 코드/서비스 워커 갱신으로 자동 교체된다는 보장은 하지 않습니다. 새 아이콘이 보이지 않으면 사이트에서 새로 추가해 확인할 수 있으며, 기존 항목 삭제 시 저장소와 설정 유지도 보장하지 않습니다. iPad 실기기 검증은 남아 있습니다.
