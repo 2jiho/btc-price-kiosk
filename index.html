@@ -2,7 +2,7 @@
 <html lang="ko">
   <head>
     <meta charset="UTF-8" />
-    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; connect-src 'self' https://api.frankfurter.dev https://cdn.jsdelivr.net https://ws-api.binance.com wss://ws-api.binance.com https://api.manana.kr; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' https://cdn.jsdelivr.net data:; manifest-src 'self';" />
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; connect-src 'self' https://cdn.jsdelivr.net wss://api.upbit.com wss://stream.binance.com:443; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' https://cdn.jsdelivr.net data:; manifest-src 'self';" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <link rel="manifest" href="manifest.json" />
     <link
@@ -51,14 +51,15 @@
         height: calc(var(--reference-size) * 15);
         margin-right: calc(var(--reference-size) * 5);
       }
-      #price-krw {
+      #price-main {
         margin: 0;
         font-size: calc(var(--reference-size) * 5);
         margin-right: calc(var(--reference-size) * 5);
       }
-      #price-usd {
+      #price-source {
+        color: #aaa;
         margin: 0;
-        font-size: calc(var(--reference-size) * 3);
+        font-size: calc(var(--reference-size) * 2);
         margin-right: calc(var(--reference-size) * 5);
       }
       #change {
@@ -88,12 +89,7 @@
       #status-indicator.connected {
         color: #51cf66;
       }
-      .krw-estimated {
-        font-size: 0.7em;
-        vertical-align: super;
-        color: #888;
-        margin-left: 4px;
-      }
+
       #status-overlay {
         position: fixed;
         top: 0;
@@ -116,6 +112,7 @@
         user-select: none;
       }
       #status-overlay p {
+        white-space: pre-line;
         color: #fff;
         font-size: calc(var(--reference-size) * 4);
         user-select: none;
@@ -207,19 +204,60 @@
         pointer-events: none;
       }
       #toast.show { opacity: 1; }
+      #wake-lock-panel {
+        position: fixed;
+        bottom: max(8px, env(safe-area-inset-bottom));
+        left: 12px;
+        right: 12px;
+        color: #aaa;
+        font-size: 12px;
+        z-index: 1500;
+      }
+      #wake-lock-panel button {
+        min-height: 44px;
+        margin: 4px;
+        padding: 6px 12px;
+        background: #222;
+        color: #fff;
+        border: 1px solid #888;
+        border-radius: 6px;
+      }
+      #currency-controls {
+        position: fixed;
+        top: max(8px, env(safe-area-inset-top));
+        left: 12px;
+        display: flex;
+        gap: 6px;
+        z-index: 1500;
+      }
+      #currency-controls button, #market-retry {
+        background: #111;
+        color: #bbb;
+        border: 1px solid #555;
+        border-radius: 6px;
+        min-height: 44px;
+        padding: 6px 12px;
+      }
+      #currency-controls button[aria-pressed="true"] { color: #fff; border-color: #f7931a; }
+      .admin-note { color: #aaa; font-size: 12px; }
+      #admin-panel { min-width: 0; width: min(320px, calc(100vw - 64px)); }
+      #status-indicator { z-index: 1500; max-width: 45vw; }
+      @media (max-width: 600px) {
+        #status-indicator { top: 62px; max-width: calc(100vw - 24px); }
+        #currency-controls { left: 8px; }
+      }
+      button:focus-visible, #status-indicator:focus-visible { outline: 2px solid #fff; }
+      [hidden] { display: none !important; }
     </style>
   </head>
   <body>
-    <div id="admin-panel">
-      <h2>관리자 설정</h2>
+    <div id="admin-panel" role="dialog" aria-modal="true" aria-labelledby="admin-title">
+      <h2 id="admin-title">관리자 설정</h2>
       <label>
         코인 티커
         <input type="text" id="admin-symbol" value="BTC" placeholder="BTC" />
       </label>
-      <label>
-        업데이트 주기 (ms)
-        <input type="number" id="admin-interval" value="5000" min="1000" max="30000" step="1000" />
-      </label>
+      <p class="admin-note">공개 WebSocket 실시간 시세 · 선택한 거래소만 연결</p>
       <label>
         디버그 모드
         <input type="checkbox" id="admin-debug" />
@@ -234,18 +272,28 @@
       <button id="admin-save">저장 및 적용</button>
       <button id="admin-close">닫기</button>
     </div>
-    <div id="toast"></div>
-    <div id="status-indicator" aria-live="polite"></div>
+    <div id="currency-controls" role="group" aria-label="표시 통화 및 거래소 선택">
+      <button type="button" data-currency="KRW" aria-pressed="true">원화 · 업비트</button>
+      <button type="button" data-currency="USDT" aria-pressed="false">USDT · 바이낸스</button>
+    </div>
+    <div id="toast" role="status"></div>
+    <div id="wake-lock-panel">
+      <span id="wake-lock-status" role="status" aria-live="polite"></span>
+      <button id="wake-lock-retry" type="button" hidden>화면 켜짐 유지 다시 시도</button>
+      <button id="app-update" type="button" hidden>새 버전 적용 (새로고침)</button>
+    </div>
+    <div id="status-indicator" role="button" tabindex="0" aria-label="관리자 설정 열기" aria-live="polite"></div>
     <div id="status-overlay">
-      <h1>연결 끊김</h1>
-      <p id="overlay-msg">네트워크 상태를 확인 중입니다...</p>
+      <h1 id="overlay-title">새 시세 대기</h1>
+      <p id="overlay-msg">시세 수신을 기다립니다.</p>
+      <button id="market-retry" type="button" hidden>시세 다시 연결</button>
     </div>
     <div id="container">
       <img src="./bitcoin-btc-logo.svg" id="icon" alt="Bitcoin logo" />
       <div id="icon-fallback"></div>
       <div>
-        <p id="price-krw" aria-live="polite" aria-atomic="true"></p>
-        <p id="price-usd" aria-live="polite" aria-atomic="true"></p>
+        <p id="price-main" aria-live="polite" aria-atomic="true"></p>
+        <p id="price-source"></p>
       </div>
       <div>
         <p id="change" aria-live="polite" aria-atomic="true"></p>
@@ -253,689 +301,231 @@
       </div>
     </div>
 
+    <script src="./wake-lock.js" defer></script>
+    <script src="./market-data.js"></script>
     <script>
       (function () {
         "use strict";
-
-        // ========== 설정 상수 ==========
-        const CONFIG = {
-          DEBUG_MODE: false,
-          EXCHANGE_RATE_UPDATE_INTERVAL: 6 * 60 * 1000,
-          PRICE_UPDATE_INTERVAL: 5000,
-          BURNIN_PREVENTION_INTERVAL: 60 * 1000,
-          BURNIN_PREVENTION_STEP: 10,
-          BURNIN_PREVENTION_LIMIT: 0.1,
-          PRICE_ANIMATION_DURATION: 500,
-          WEBSOCKET_RECONNECT_BASE_DELAY: 1000,
-          WEBSOCKET_RECONNECT_MAX_DELAY: 30000,
-          WEBSOCKET_RETRY_DELAY: 1000,
-          BTC_SYMBOL: "BTCUSDT",
-          BINANCE_WS_URL: "wss://ws-api.binance.com/ws-api/v3",
-          PING_INTERVAL: 30000,
-          PONG_TIMEOUT: 10000,
-        };
-
-        // 디버그 로깅 헬퍼
-        const log = {
-          debug: function () {
-            if (CONFIG.DEBUG_MODE) console.debug.apply(console, arguments);
-          },
-          info: function () {
-            console.log.apply(console, arguments);
-          },
-          warn: function () {
-            console.warn.apply(console, arguments);
-          },
-          error: function () {
-            console.error.apply(console, arguments);
-          },
-        };
-
-        // UUID 생성 (crypto.randomUUID 미지원 브라우저 대응)
-        function generateId() {
-          if (crypto.randomUUID) {
-            return crypto.randomUUID();
-          }
-          return "xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx".replace(
-            /[xy]/g,
-            function (c) {
-              var r = (Math.random() * 16) | 0;
-              return (c === "x" ? r : (r & 0x3) | 0x8).toString(16);
-            }
-          );
-        }
-
-        // ========== DOM 요소 캐싱 ==========
-        var elPriceKRW = document.getElementById("price-krw");
-        var elPriceUSD = document.getElementById("price-usd");
+        var settings = { ticker: "BTC", currency: "KRW", debug: false, brightness: 100 };
+        var elPrice = document.getElementById("price-main");
+        var elSource = document.getElementById("price-source");
         var elChange = document.getElementById("change");
+        var elChangeLabel = document.getElementById("change-label");
         var elContainer = document.getElementById("container");
         var elStatus = document.getElementById("status-indicator");
         var elOverlay = document.getElementById("status-overlay");
+        var elOverlayTitle = document.getElementById("overlay-title");
         var elOverlayMsg = document.getElementById("overlay-msg");
+        var elRetry = document.getElementById("market-retry");
         var elAdminPanel = document.getElementById("admin-panel");
         var elAdminSymbol = document.getElementById("admin-symbol");
-        var elAdminInterval = document.getElementById("admin-interval");
         var elAdminDebug = document.getElementById("admin-debug");
         var elAdminBrightness = document.getElementById("admin-brightness");
         var elBrightnessValue = document.getElementById("brightness-value");
-        var elAdminSave = document.getElementById("admin-save");
-        var elAdminClose = document.getElementById("admin-close");
         var elIcon = document.getElementById("icon");
         var elIconFallback = document.getElementById("icon-fallback");
+        var controls = document.querySelectorAll("[data-currency]");
+        var formatKRW = new Intl.NumberFormat("ko-KR", { style: "currency", currency: "KRW", maximumFractionDigits: 0 });
+        var formatUSDT = new Intl.NumberFormat("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+        var state = null, lastRendered = null, animationTimer = null, toastTimer = null;
+        var cursorTimer = null, statusTimer = null, burninTimer = null, offsetX = 0, offsetY = 0;
+        var adminReturnFocus = null;
 
-
-        // ========== 상태 표시 ==========
-        function setStatus(text, className) {
-          elStatus.textContent = text;
-          elStatus.className = className || "";
-
-          if (className === "connected") {
-            elOverlay.style.display = "none";
-            if (staleTimer) { clearInterval(staleTimer); staleTimer = null; }
-          } else if (className === "error") {
-            elOverlay.style.display = "flex";
-            // Show last known KRW price with a live N초 전 counter
-            if (lastKRWPrice > 0) {
-              elOverlayMsg.textContent = ("마지막 가격: " + lastKRWPrice.toLocaleString(undefined, {style: "currency", currency: "KRW", currencyDisplay: "narrowSymbol", minimumFractionDigits: 0}) + " (" + 0 + "초 전)");
-            } else {
-              elOverlayMsg.textContent = text;
-            }
-            if (staleTimer) clearInterval(staleTimer);
-            staleTimer = addInterval(setInterval(function () {
-              var secs = Math.floor((Date.now() - lastPriceUpdate) / 1000);
-              if (lastKRWPrice > 0) {
-                elOverlayMsg.textContent = ("마지막 가격: " + lastKRWPrice.toLocaleString(undefined, {style: "currency", currency: "KRW", currencyDisplay: "narrowSymbol", minimumFractionDigits: 0}) + ", ") + secs + "초 전";
-              } else {
-                elOverlayMsg.textContent = secs + "초 전";
-              }
-            }, 1000));
-          } else {
-            elOverlay.style.display = "none";
-            if (staleTimer) { clearInterval(staleTimer); staleTimer = null; }
-          }
+        function formatPrice(tick) {
+          return tick.selection.currency === "KRW" ? formatKRW.format(tick.price) : formatUSDT.format(tick.price) + " USDT";
         }
-
-        // ========== 리소스 정리용 ID 저장 ==========
-        var intervalIds = [];
-        var timeoutIds = [];
-
-        function addInterval(id) {
-          intervalIds.push(id);
-          return id;
+        function showToast(message) {
+          var toast = document.getElementById("toast");
+          toast.textContent = message; toast.className = "show";
+          clearTimeout(toastTimer);
+          toastTimer = setTimeout(function () { toast.className = ""; }, 2000);
         }
-
-        function addTimeout(id) {
-          timeoutIds.push(id);
-          return id;
+        function persist() {
+          try { localStorage.setItem("btc-kiosk-settings", JSON.stringify(settings)); return true; }
+          catch (error) { showToast("설정을 저장하지 못했습니다. 이번 실행에만 적용됩니다."); return false; }
         }
-
-        // ========== 환율 (다중 소스 fallback) ==========
-        var krwUsdRate = 0;
-        var exchangeRateSource = "";
-
-        async function fetchExchangeRate() {
-          const sources = [
-            {
-              name: "Frankfurter",
-              fetch: async () => {
-                const res = await fetch("https://api.frankfurter.dev/v2/rate/USD/KRW");
-                if (!res.ok) throw new Error("Frankfurter v2 API error: " + res.status);
-                const data = await res.json();
-                if (!data.rate) throw new Error("Invalid Frankfurter v2 data");
-                return data.rate;
-              }
-            },
-            {
-              name: "exchange-api (CDN)",
-              fetch: async () => {
-                const res = await fetch("https://cdn.jsdelivr.net/npm/@fawazahmed0/currency-api@latest/v1/currencies/usd.json");
-                if (!res.ok) throw new Error("exchange-api CDN error: " + res.status);
-                const data = await res.json();
-                if (!data || !data.usd || !data.usd.krw) throw new Error("Invalid exchange-api data");
-                return data.usd.krw;
-              }
-            }
-          ];
-
-          for (const source of sources) {
-            try {
-              const rate = await source.fetch();
-              if (rate && !isNaN(rate)) {
-                krwUsdRate = rate;
-                exchangeRateSource = source.name;
-                log.info("환율 업데이트 완료 (" + source.name + "): " + krwUsdRate.toFixed(2) + " KRW/USD");
-                // Persist rate to localStorage for offline caching
-                try {
-                  localStorage.setItem("btc-last-exchange-rate", JSON.stringify({rate: krwUsdRate, source: exchangeRateSource, time: Date.now()}));
-                } catch (e) {
-                  // ignore storage errors
-                }
-                return;
-              }
-            } catch (e) {
-              log.warn(source.name + " 소스 실패: " + e.message);
-            }
-          }
-
-          log.error("모든 환율 소스 실패, 마지막 환율 유지");
-        }
-
-        // Load cached rate before first fetch
-        try {
-          var cachedRate = JSON.parse(localStorage.getItem("btc-last-exchange-rate"));
-          if (cachedRate && cachedRate.rate) {
-            krwUsdRate = cachedRate.rate;
-            exchangeRateSource = cachedRate.source + " (캐시)";
-            log.info("캐시된 환율 로드: " + krwUsdRate.toFixed(2) + " (" + cachedRate.source + ")");
-          }
-        } catch (e) {
-          // ignore cache load errors
-        }
-        fetchExchangeRate();
-        addInterval(
-          setInterval(fetchExchangeRate, CONFIG.EXCHANGE_RATE_UPDATE_INTERVAL)
-        );
-
-        // ========== BTC 가격 ==========
-        var ws = null;
-        var lastPrice = 0;
-        var lastKRWPrice = 0;
-        var lastPriceUpdate = 0;
-        var staleTimer = null;
-        var reconnectTimeout = null;
-        var pingIntervalId = null;
-        var pongTimeoutId = null;
-        var reconnectAttempts = 0;
-        var priceUpdateIntervalId = null;
-        var isThrottled = false;
-
-        function getReconnectDelay() {
-          var delay = Math.min(
-            CONFIG.WEBSOCKET_RECONNECT_BASE_DELAY * Math.pow(2, reconnectAttempts),
-            CONFIG.WEBSOCKET_RECONNECT_MAX_DELAY
-          );
-          return delay;
-        }
-
-        function connectWebSocket() {
-          if (ws) {
-            ws.onclose = null; // 재연결 루프 방지
-            ws.close();
-          }
-
-          setStatus("연결 중...", "");
-
-          ws = new WebSocket(CONFIG.BINANCE_WS_URL);
-
-          ws.onopen = function () {
-            log.info("WebSocket 연결 성공");
-            reconnectAttempts = 0;
-            setStatus("연결됨", "connected");
-            // Health check: start periodic ping
-            pingIntervalId = addInterval(setInterval(function() {
-              if (ws && ws.readyState === WebSocket.OPEN) {
-                ws.send(
-                  JSON.stringify({id: generateId(), method: "ping"})
-                );
-                pongTimeoutId = addTimeout(setTimeout(function() {
-                  log.warn("Ping 응답 없음. 재연결 시도");
-                  ws.close();
-                }, CONFIG.PONG_TIMEOUT));
-              }
-            }, CONFIG.PING_INTERVAL));
-            ws.send(
-              JSON.stringify({
-                id: generateId(),
-                method: "ping",
-              })
-            );
-          };
-
-          ws.onmessage = function (event) {
-            var response;
-            try {
-              response = JSON.parse(event.data);
-            } catch (e) {
-              log.error("WebSocket 메시지 파싱 실패:", e);
-              return;
-            }
-            log.debug("Received data:", response);
-
-            if (response.error) {
-              log.error("WebSocket 에러:", response.error);
-              return;
-            }
-
-            if (!response.result) {
-              log.warn("response.result가 없습니다:", response);
-              return;
-            }
-
-            if (Object.keys(response.result).length === 0) {
-              log.info("WebSocket 연결됨 (ping/pong)");
-              if (pongTimeoutId) { clearTimeout(pongTimeoutId); pongTimeoutId = null; }
-              sendTickerRequest();
-            } else if (response.result.symbol === CONFIG.BTC_SYMBOL) {
-              updatePrice(response.result);
-            }
-
-            // Rate limit 체크 및 스로틀링
-            if (response.rateLimits && response.rateLimits[0]) {
-              var rateLimit = response.rateLimits[0];
-              var usage = rateLimit.count / rateLimit.limit;
-              log.debug(
-                "Rate limit: " + rateLimit.count + "/" + rateLimit.limit + " requests/min"
-              );
-
-              if (usage > 0.8 && !isThrottled) {
-                isThrottled = true;
-                log.warn("Rate limit 80% 도달. 요청 빈도를 줄입니다.");
-                // 기존 인터벌을 제거하고 2배 느린 주기로 교체
-                if (priceUpdateIntervalId) {
-                  clearInterval(priceUpdateIntervalId);
-                }
-                priceUpdateIntervalId = addInterval(
-                  setInterval(sendTickerRequest, CONFIG.PRICE_UPDATE_INTERVAL * 2)
-                );
-              } else if (usage < 0.3 && isThrottled) {
-                isThrottled = false;
-                log.info("Rate limit 여유 확보. 정상 빈도로 복구합니다. (30% 미만)");
-                if (priceUpdateIntervalId) {
-                  clearInterval(priceUpdateIntervalId);
-                }
-                priceUpdateIntervalId = addInterval(
-                  setInterval(sendTickerRequest, CONFIG.PRICE_UPDATE_INTERVAL)
-                );
-              }
-            }
-          };
-
-          ws.onclose = function (event) {
-            // Clean up health check timers on close
-            if (pingIntervalId) {
-              clearInterval(pingIntervalId);
-              pingIntervalId = null;
-            }
-            if (pongTimeoutId) {
-              clearTimeout(pongTimeoutId);
-              pongTimeoutId = null;
-            }
-            log.warn("WebSocket 연결 종료:", event.code, event.reason);
-            var delay = getReconnectDelay();
-            reconnectAttempts++;
-            setStatus("재연결 대기 (" + Math.round(delay / 1000) + "초)", "error");
-
-            if (reconnectTimeout) clearTimeout(reconnectTimeout);
-            reconnectTimeout = addTimeout(
-              setTimeout(function () {
-                log.info("WebSocket 재연결 시도 중... (시도 " + reconnectAttempts + ")");
-                connectWebSocket();
-              }, delay)
-            );
-          };
-
-          ws.onerror = function (error) {
-            log.error("WebSocket 에러:", error);
-            setStatus("연결 오류", "error");
-          };
-        }
-
-        function sendTickerRequest() {
-          if (ws && ws.readyState === WebSocket.OPEN) {
-            ws.send(
-              JSON.stringify({
-                id: generateId(),
-                method: "ticker.24hr",
-                params: {
-                  symbol: CONFIG.BTC_SYMBOL,
-                },
-              })
-            );
-          } else {
-            log.debug("WebSocket이 아직 연결되지 않았습니다. 재시도 중...");
-            addTimeout(
-              setTimeout(sendTickerRequest, CONFIG.WEBSOCKET_RETRY_DELAY)
-            );
-          }
-        }
-
-        function updatePrice(data) {
-          if (!data || !data.lastPrice) {
-            log.error("잘못된 데이터:", data);
-            return;
-          }
-
-          var priceUSD = parseFloat(data.lastPrice);
-          // 기록된 가격 업데이트 시각 저장
-          lastPriceUpdate = Date.now();
-          var priceKRW = priceUSD * krwUsdRate;
-          var percentChange = parseFloat(data.priceChangePercent);
-
-          if (isNaN(priceUSD) || isNaN(percentChange)) {
-            log.error("가격 파싱 실패:", data);
-            return;
-          }
-
-          log.debug({
-            priceUSD: priceUSD,
-            priceKRW: priceKRW,
-            percentChange: percentChange,
-            exchangeRateSource: exchangeRateSource,
-          });
-
-          // USD 가격 표시
-          var formattedPriceUSD = priceUSD.toLocaleString(undefined, {
-            style: "currency",
-            currency: "USD",
-            currencyDisplay: "narrowSymbol",
-            minimumFractionDigits: 2,
-            maximumFractionDigits: 2,
-          });
-          elPriceUSD.textContent = formattedPriceUSD;
-
-          // KRW 가격 표시 (추정일 경우 별도 스타일)
-          var formattedPriceKRW = priceKRW.toLocaleString(undefined, {
-            style: "currency",
-            currency: "KRW",
-            currencyDisplay: "narrowSymbol",
-            minimumFractionDigits: 0,
-            maximumFractionDigits: 0,
-          });
-
-          if (!exchangeRateSource) {
-            elPriceKRW.innerHTML = formattedPriceKRW + '<span class="krw-estimated">(환율 로딩 중)</span>';
-          } else {
-            elPriceKRW.textContent = formattedPriceKRW;
-          }
-
-          // 24시간 변화율 표시
-          var formattedChange =
-            (percentChange >= 0 ? "+" : "") + percentChange.toFixed(2) + "%";
-          elChange.textContent = formattedChange;
-          if (percentChange > 0) {
-            elChange.style.color = "lightgreen";
-          } else if (percentChange < 0) {
-            elChange.style.color = "lightcoral";
-          } else {
-            elChange.style.color = "white";
-          }
-
-          // 가격 변화에 따른 애니메이션 효과
-          if (priceUSD > lastPrice) {
-            elPriceUSD.style.color = "green";
-          } else if (priceUSD < lastPrice) {
-            elPriceUSD.style.color = "maroon";
-          }
-          addTimeout(
-            setTimeout(function () {
-              elPriceUSD.style.color = "gray";
-            }, CONFIG.PRICE_ANIMATION_DURATION)
-          );
-
-          lastPrice = priceUSD;
-          lastKRWPrice = priceKRW;
-        }
-
-        // WebSocket 연결 및 주기적 가격 업데이트
-        connectWebSocket();
-        priceUpdateIntervalId = addInterval(
-          setInterval(sendTickerRequest, CONFIG.PRICE_UPDATE_INTERVAL)
-        );
-
-        // ========== 화면 번인 방지 ==========
-        var offsetX = 0;
-        var offsetY = 0;
-
-        function moveContainer() {
-          var limitX =
-            ((window.innerWidth - elContainer.offsetWidth) / 2) *
-            CONFIG.BURNIN_PREVENTION_LIMIT;
-          var limitY =
-            ((window.innerHeight - elContainer.offsetHeight) / 2) *
-            CONFIG.BURNIN_PREVENTION_LIMIT;
-          limitX = Math.floor(limitX);
-          limitY = Math.floor(limitY);
-
-          offsetX +=
-            (Math.random() < 0.5 ? 1 : -1) * CONFIG.BURNIN_PREVENTION_STEP;
-          offsetY +=
-            (Math.random() < 0.5 ? 1 : -1) * CONFIG.BURNIN_PREVENTION_STEP;
-
-          offsetX = Math.max(Math.min(offsetX, limitX), -limitX);
-          offsetY = Math.max(Math.min(offsetY, limitY), -limitY);
-
-          elContainer.style.transform =
-            "translate(" + offsetX + "px, " + offsetY + "px)";
-          log.debug("translate(" + offsetX + "px, " + offsetY + "px)");
-        }
-
-        addInterval(
-          setInterval(moveContainer, CONFIG.BURNIN_PREVENTION_INTERVAL)
-        );
-
-        // ========== Wake Lock (화면 꺼짐 방지) ==========
-        var wakeLock = null;
-
-        async function enableWakeLock() {
-          if (!("wakeLock" in navigator)) {
-            log.warn("이 브라우저는 Wake Lock API를 지원하지 않습니다.");
-            return;
-          }
-          if (document.visibilityState !== "visible") {
-            log.warn("페이지가 보이지 않습니다. Wake Lock을 요청할 수 없습니다.");
-            return;
-          }
-
-          try {
-            wakeLock = await navigator.wakeLock.request("screen");
-            log.info("Wake Lock 활성화: 화면이 꺼지지 않습니다.");
-          } catch (err) {
-            log.error("Wake Lock 에러: " + err.name + " - " + err.message);
-          }
-        }
-
-        async function releaseWakeLock() {
-          if (wakeLock) {
-            await wakeLock.release();
-            wakeLock = null;
-            log.info("Wake Lock 해제됨");
-          }
-        }
-
-        document.addEventListener("visibilitychange", async function () {
-          if (document.visibilityState === "visible") {
-            await enableWakeLock();
-          } else {
-            await releaseWakeLock();
-          }
-        });
-
-        enableWakeLock();
-
-        // ========== 전체 화면 시 커서 숨김 ==========
-        var cursorTimeout = null;
-
-        function checkFullscreenAndHideCursor() {
-          if (document.fullscreenElement) {
-            document.body.style.cursor = "none";
-          } else {
-            document.body.style.cursor = "auto";
-          }
-        }
-
-        document.addEventListener("mousemove", function () {
-          document.body.style.cursor = "auto";
-          if (cursorTimeout) clearTimeout(cursorTimeout);
-          cursorTimeout = setTimeout(checkFullscreenAndHideCursor, 2000);
-        });
-
-        document.addEventListener("fullscreenchange", checkFullscreenAndHideCursor);
-
-        // ========== 페이지 언로드 시 리소스 정리 ==========
-        window.addEventListener("beforeunload", function () {
-          intervalIds.forEach(clearInterval);
-          timeoutIds.forEach(clearTimeout);
-          if (ws) {
-            ws.onclose = null;
-            ws.close();
-          }
-          releaseWakeLock();
-        });
-
-        // ========== 관리자 설정 (Admin Panel) ==========
-        function getBinanceSymbol(ticker) {
-          return ticker.toUpperCase() + "USDT";
-        }
-
-        function getIconUrl(ticker) {
-          var lower = ticker.toLowerCase();
-          return "https://cdn.jsdelivr.net/gh/spothq/cryptocurrency-icons@master/svg/color/" + lower + ".svg";
-        }
-
-        function updateIcon(ticker) {
-          var iconUrl = getIconUrl(ticker);
-          
-          elIcon.onload = function() {
-            elIcon.style.display = "block";
-            elIconFallback.style.display = "none";
-          };
-          
-          elIcon.onerror = function() {
-            log.warn("아이콘 로드 실패, 티커 텍스트로 대체");
-            elIcon.style.display = "none";
-            elIconFallback.textContent = ticker.toUpperCase();
-            elIconFallback.style.display = "flex";
-          };
-          
-          elIcon.src = iconUrl;
-          elIcon.alt = ticker.toUpperCase() + " logo";
-        }
-
         function loadSettings() {
           try {
-            var saved = localStorage.getItem("btc-kiosk-settings");
-            if (saved) {
-              var settings = JSON.parse(saved);
-              if (settings.ticker) {
-                CONFIG.BTC_SYMBOL = getBinanceSymbol(settings.ticker);
-                updateIcon(settings.ticker);
-              }
-              if (settings.interval) CONFIG.PRICE_UPDATE_INTERVAL = parseInt(settings.interval);
-              if (settings.debug !== undefined) CONFIG.DEBUG_MODE = settings.debug;
-              if (settings.brightness !== undefined) {
-                elContainer.style.setProperty("filter", "brightness(" + settings.brightness + "%)", "important");
-              }
-              log.info("설정 불러오기 완료:", settings);
+            var saved = JSON.parse(localStorage.getItem("btc-kiosk-settings"));
+            if (saved && typeof saved === "object") {
+              if (typeof saved.ticker === "string" && /^[A-Z0-9]{1,20}$/.test(saved.ticker.toUpperCase())) settings.ticker = saved.ticker.toUpperCase();
+              if (["KRW", "USDT"].includes(saved.currency)) settings.currency = saved.currency;
+              settings.debug = saved.debug === true;
+              var brightness = Number(saved.brightness);
+              if (Number.isFinite(brightness) && brightness >= 10 && brightness <= 100) settings.brightness = brightness;
             }
-          } catch (e) {
-            log.error("설정 불러오기 실패:", e);
-          }
+            // Remove the obsolete converted-rate storage from previous installations.
+            localStorage.removeItem("btc-last-exchange-rate");
+          } catch (error) { console.warn("설정 불러오기 실패:", error); }
         }
-
-        function saveSettings() {
-          var ticker = elAdminSymbol.value.trim().toUpperCase();
-          if (!ticker) {
-            showToast("티커를 입력해주세요.");
-            return;
-          }
-
-          var binanceSymbol = getBinanceSymbol(ticker);
-          CONFIG.BTC_SYMBOL = binanceSymbol;
-          CONFIG.PRICE_UPDATE_INTERVAL = parseInt(elAdminInterval.value);
-          CONFIG.DEBUG_MODE = elAdminDebug.checked;
-          var brightness = parseInt(elAdminBrightness.value);
-
-          var settings = {
-            ticker: ticker,
-            interval: CONFIG.PRICE_UPDATE_INTERVAL,
-            debug: CONFIG.DEBUG_MODE,
-            brightness: brightness
+        function updateIcon() {
+          var ticker = settings.ticker;
+          elIcon.alt = ticker + " logo";
+          elIcon.onload = function () { elIcon.style.display = "block"; elIconFallback.style.display = "none"; };
+          elIcon.onerror = function () {
+            elIcon.style.display = "none"; elIconFallback.textContent = settings.ticker; elIconFallback.style.display = "flex";
           };
-          localStorage.setItem("btc-kiosk-settings", JSON.stringify(settings));
-          log.info("설정 저장 완료:", settings);
-
-          // 밝기 적용
-          elContainer.style.setProperty("filter", "brightness(" + brightness + "%)", "important");
-
-          // 아이콘 업데이트
-          updateIcon(ticker);
-
-          // 실시간 적용
-          if (priceUpdateIntervalId) {
-            clearInterval(priceUpdateIntervalId);
-          }
-          priceUpdateIntervalId = addInterval(
-            setInterval(sendTickerRequest, CONFIG.PRICE_UPDATE_INTERVAL)
-          );
-
-          // WebSocket 재연결 (심볼 변경 시)
-          connectWebSocket();
-
-          hideAdminPanel();
-          showToast("설정이 저장되었습니다.");
+          elIcon.src = ticker === "BTC" ? "./bitcoin-btc-logo.svg" :
+            "https://cdn.jsdelivr.net/gh/spothq/cryptocurrency-icons@master/svg/color/" + ticker.toLowerCase() + ".svg";
         }
+        function renderTick(tick) {
+          if (tick.selection.currency !== settings.currency || tick.selection.ticker !== settings.ticker) return;
+          var formatted = formatPrice(tick);
+          if (elPrice.textContent !== formatted) elPrice.textContent = formatted;
+          var change = (tick.change >= 0 ? "+" : "") + tick.change.toFixed(2) + "%";
+          if (elChange.textContent !== change) elChange.textContent = change;
+          elChange.style.color = tick.change > 0 ? "lightgreen" : tick.change < 0 ? "lightcoral" : "white";
+          if (lastRendered && lastRendered.price !== tick.price) {
+            elPrice.style.color = tick.price > lastRendered.price ? "lightgreen" : "lightcoral";
+            clearTimeout(animationTimer);
+            animationTimer = setTimeout(function () { elPrice.style.color = "white"; }, 500);
+          }
+          lastRendered = tick;
+        }
+        function renderState(next) {
+          if (next) state = next;
+          if (!state || !state.selection) return;
+          var kind = state.kind, label;
+          switch (kind) {
+            case "live": label = "실시간 연결됨"; break;
+            case "connecting": label = "연결 중…"; break;
+            case "waiting": label = "새 시세 수신 대기…"; break;
+            case "paused": label = "백그라운드 대기"; break;
+            case "offline": label = "오프라인"; break;
+            case "error": label = state.reason; break;
+            default:
+              label = state.reason + " · 재연결 " + Math.max(0, Math.ceil((state.retryAt - Date.now()) / 1000)) + "초 후";
+          }
+          var text = state.selection.exchange + " · " + label;
+          if (elStatus.textContent !== text) elStatus.textContent = text;
+          elStatus.className = kind === "live" ? "connected" : kind === "connecting" || kind === "waiting" ? "" : "error";
+          var problem = ["backoff", "error", "offline"].includes(kind);
+          elOverlay.style.display = problem || (kind !== "live" && !!state.last) ? "flex" : "none";
+          elOverlayTitle.textContent = kind === "error" ? "시세 오류" : kind === "offline" ? "오프라인" : "새 시세 대기";
+          var detail = state.last ? "마지막 시세: " + formatPrice(state.last) + " · " +
+            Math.max(0, Math.floor((Date.now() - Math.min(state.last.receivedAt, state.last.eventTime)) / 1000)) + "초 전" : "아직 수신한 시세가 없습니다.";
+          elOverlayMsg.textContent = detail + (state.reason ? "\n" + state.reason : "");
+          elRetry.hidden = kind !== "error";
+        }
+        function applySelection() {
+          // Clear the old amount before relabeling or initiating another source.
+          clearTimeout(animationTimer); animationTimer = null; lastRendered = null;
+          elPrice.textContent = "—"; elPrice.style.color = "white";
+          elChange.textContent = "—"; elChange.style.color = "white";
+          elSource.textContent = settings.currency === "KRW" ? "업비트 · KRW-" + settings.ticker : "바이낸스 · " + settings.ticker + "/USDT";
+          elChangeLabel.textContent = settings.currency === "KRW" ? "전일 대비" : "24h";
+          controls.forEach(function (control) { control.setAttribute("aria-pressed", String(control.dataset.currency === settings.currency)); });
+          updateIcon();
+          feed.select(settings.currency, settings.ticker);
+        }
+        function pauseVisualTimers() {
+          clearInterval(statusTimer); clearInterval(burninTimer);
+          statusTimer = burninTimer = null;
+        }
+        function resumeVisualTimers() {
+          if (statusTimer !== null) return;
+          statusTimer = setInterval(function () { if (state && state.kind !== "live") renderState(); }, 1000);
+          burninTimer = setInterval(function () {
+            var limitX = Math.max(0, Math.floor((window.innerWidth - elContainer.offsetWidth) * 0.05));
+            var limitY = Math.max(0, Math.floor((window.innerHeight - elContainer.offsetHeight) * 0.05));
+            offsetX = Math.max(-limitX, Math.min(limitX, offsetX + (Math.random() < 0.5 ? 10 : -10)));
+            offsetY = Math.max(-limitY, Math.min(limitY, offsetY + (Math.random() < 0.5 ? 10 : -10)));
+            elContainer.style.transform = "translate(" + offsetX + "px, " + offsetY + "px)";
+          }, 60000);
+        }
+        function setVisible(visible) {
+          feed.setActive(visible);
+          if (visible) resumeVisualTimers(); else pauseVisualTimers();
+        }
+        loadSettings();
+        elContainer.style.setProperty("filter", "brightness(" + settings.brightness + "%)");
+        var feed = window.createMarketFeed({
+          active: document.visibilityState === "visible", online: navigator.onLine,
+          onTick: renderTick, onState: renderState,
+          onError: function (error) { if (settings.debug) console.warn("시세 메시지 오류:", error); },
+        });
+        applySelection();
+        if (document.visibilityState === "visible") resumeVisualTimers();
+        controls.forEach(function (control) {
+          control.addEventListener("click", function () {
+            if (settings.currency === control.dataset.currency) return;
+            settings.currency = control.dataset.currency;
+            persist(); applySelection();
+          });
+        });
+        elRetry.addEventListener("click", function () { feed.retry(); });
+        document.addEventListener("visibilitychange", function () { setVisible(document.visibilityState === "visible"); });
+        window.addEventListener("pagehide", function () { setVisible(false); });
+        window.addEventListener("pageshow", function () { setVisible(document.visibilityState === "visible"); });
+        window.addEventListener("online", function () { feed.setOnline(true); });
+        window.addEventListener("offline", function () { feed.setOnline(false); });
 
         function showAdminPanel() {
-          var currentTicker = CONFIG.BTC_SYMBOL.replace("USDT", "");
-          elAdminSymbol.value = currentTicker;
-          elAdminInterval.value = CONFIG.PRICE_UPDATE_INTERVAL;
-          elAdminDebug.checked = CONFIG.DEBUG_MODE;
-          // Read current brightness from CSS filter
-          var currentFilter = elContainer.style.getPropertyValue("filter");
-          var match = currentFilter.match(/brightness\((\d+)%\)/);
-          elAdminBrightness.value = match ? parseInt(match[1]) : 100;
-          elBrightnessValue.textContent = elAdminBrightness.value + "%";
-          elAdminPanel.style.display = "flex";
+          adminReturnFocus = document.activeElement;
+          elAdminSymbol.value = settings.ticker;
+          elAdminDebug.checked = settings.debug;
+          elAdminBrightness.value = settings.brightness;
+          elBrightnessValue.textContent = settings.brightness + "%";
+          elAdminPanel.style.display = "flex"; elAdminSymbol.focus();
         }
-
         function hideAdminPanel() {
           elAdminPanel.style.display = "none";
+          elContainer.style.setProperty("filter", "brightness(" + settings.brightness + "%)");
+          if (adminReturnFocus) adminReturnFocus.focus();
         }
-
-        // Toast UX helper
-        function showToast(msg) {
-          var toast = document.getElementById("toast");
-          toast.textContent = msg;
-          toast.className = "show";
-          setTimeout(function() { toast.className = ""; }, 2000);
-        }
-
-        // 상태 표시줄 클릭으로 관리자 패널 열기
-        elStatus.addEventListener("click", showAdminPanel);
-
-        elAdminSave.addEventListener("click", saveSettings);
-        elAdminClose.addEventListener("click", hideAdminPanel);
-
-        // Brightness live preview
-        elAdminBrightness.addEventListener("input", function() {
-          var val = elAdminBrightness.value;
-          elContainer.style.setProperty("filter", "brightness(" + val + "%)", "important");
-          elBrightnessValue.textContent = val + "%";
+        document.getElementById("admin-save").addEventListener("click", function () {
+          var ticker = elAdminSymbol.value.trim().toUpperCase();
+          var brightness = Number(elAdminBrightness.value);
+          if (!/^[A-Z0-9]{1,20}$/.test(ticker) || !Number.isFinite(brightness) || brightness < 10 || brightness > 100) {
+            showToast("티커 및 밝기(10~100%)를 확인하세요."); return;
+          }
+          var changed = settings.ticker !== ticker;
+          settings.ticker = ticker; settings.debug = elAdminDebug.checked; settings.brightness = brightness;
+          var saved = persist(); hideAdminPanel();
+          if (changed) applySelection();
+          if (saved) showToast("설정이 저장되었습니다.");
         });
-
-        // ESC key to close admin panel
-        document.addEventListener("keydown", function(e) {
-          if (e.key === "Escape" && elAdminPanel.style.display === "flex") {
-            hideAdminPanel();
+        document.getElementById("admin-close").addEventListener("click", hideAdminPanel);
+        elStatus.addEventListener("click", showAdminPanel);
+        elStatus.addEventListener("keydown", function (event) {
+          if (event.key === "Enter" || event.key === " ") { event.preventDefault(); showAdminPanel(); }
+        });
+        elAdminBrightness.addEventListener("input", function () {
+          elContainer.style.setProperty("filter", "brightness(" + elAdminBrightness.value + "%)");
+          elBrightnessValue.textContent = elAdminBrightness.value + "%";
+        });
+        document.addEventListener("keydown", function (event) {
+          if (elAdminPanel.style.display !== "flex") return;
+          if (event.key === "Escape") hideAdminPanel();
+          if (event.key === "Tab") {
+            var focusable = elAdminPanel.querySelectorAll("input, button");
+            var first = focusable[0], end = focusable[focusable.length - 1];
+            if (event.shiftKey && document.activeElement === first) { event.preventDefault(); end.focus(); }
+            else if (!event.shiftKey && document.activeElement === end) { event.preventDefault(); first.focus(); }
           }
         });
+        function hideCursor() { document.body.style.cursor = document.fullscreenElement ? "none" : "auto"; }
+        document.addEventListener("mousemove", function () {
+          document.body.style.cursor = "auto"; clearTimeout(cursorTimer); cursorTimer = setTimeout(hideCursor, 2000);
+        });
+        document.addEventListener("fullscreenchange", hideCursor);
 
-        // 초기 설정 로드
-        loadSettings();
-
-        // ========== Service Worker 등록 ==========
         if ("serviceWorker" in navigator) {
-          navigator.serviceWorker.register("./service-worker.js").then(
-            function (registration) {
-              log.info("Service Worker 등록됨: " + registration.scope);
-            },
-            function (error) {
-              log.error("Service Worker 등록 실패:", error);
-            }
-          );
+          var hadController = !!navigator.serviceWorker.controller;
+          var updateButton = document.getElementById("app-update");
+          updateButton.addEventListener("click", function () { window.location.reload(); });
+          navigator.serviceWorker.addEventListener("controllerchange", function () {
+            if (hadController) updateButton.hidden = false;
+            hadController = true;
+          });
+          navigator.serviceWorker.register("./service-worker.js", { updateViaCache: "none" }).then(function (registration) {
+            function checkUpdate() { registration.update().catch(function (error) { console.warn("업데이트 확인 실패:", error); }); }
+            checkUpdate();
+            document.addEventListener("visibilitychange", function () { if (document.visibilityState === "visible") checkUpdate(); });
+          }).catch(function (error) { console.warn("Service Worker 등록 실패:", error); });
         }
       })();
+
     </script>
   </body>
 </html>
