@@ -100,3 +100,16 @@ viewport-fit=cover, apple-mobile-web-app-capable=yes, 불투명 black 상태표�
 단위 28개, JS/diff 검사 및 전체 Chrome 회귀 통과. 별도 8개 레이아웃(768x1024 세로, 1024x768 가로, 비대칭 inset, iPad 양 방향 0 inset, 1440x900 데스크톱, 390x844 폰, 1024x360 짧은 가로)에서 버튼/상태 겹침 부재, 상·좌우·하 안전 경계, 설정 창과 닫기 버튼 접근, 포커스/설정 유지, 5초 자동 숨김을 확인했습니다. 동일 페이지에서 크기를 바꿔 방향 전환에 해당하는 CSS 재계산도 검사했습니다. Chrome의 CSS 변수에 inset을 주입한 레이아웃 시뮬레이션이며 iPad 시스템 UI 재현을 주장하지 않습니다.
 
 SW v6이며 실제 배포 v5, 이전 v3 및 원본 v1 각각에서 root/index 갱신, offline PNG/셸, 다른 앱 캐시 보존이 통과했습니다. 검증 근거는 evidence/safe-area-unit-tests.txt, safe-area-browser-tests.txt, safe-area-layouts.json, safe-area-ipad-portrait.png 및 safe-area-ipad-landscape.png입니다. iPadOS 실기기 직접 확인은 남아 있습니다.
+
+
+## v7 하단 설정 재설계 — v6 실기기 피드백 반영
+
+사용자는 v6에서 변화가 없고 버튼 디자인도 좋지 않다고 피드백했습니다. v6의 Chrome 합성 inset 통과를 iPad 실기기 해결로 취급하지 않습니다. 상단 조작 UI를 제거하고 평소 가격 표시를 유지합니다. 탭 후 하단 안전 영역에 설정 아이콘 하나만 나타나며, 실제 타깃은 48px입니다. 통화 선택, Wake Lock 상태/재시도, 시세 재시도, 업데이트 및 티커/밝기 설정은 둥근 어두운 패널 안으로 모았습니다. 가격 근처에는 오류·지연/마지막 가격 문구만 남깁니다.
+
+패널은 좌우 inset을 반영하고 상단은 max(48px, inset+16px)을 비웁니다. 따라서 inset=0에서도 설정/닫기 버튼을 화면 상단에 두지 않습니다. 짧은 화면은 패널 스크롤과 sticky 헤더로 닫기에 접근합니다. 숨김/첫 탭 보호/포커스 유지/설정 유지/Escape 복귀를 보존하고 Tab 순환은 실제 표시되는 활성 입력/버튼만 포함합니다.
+
+설정에는 화면 코드 버전 v7과 실제 controlling SW가 응답한 캐시 버전을 별도로 표시합니다. 테스트에서 화면 v7에 새 캐시 v8이 설치된 경우를 구분했고, 사용자 새 버전 적용 후 닫힌 초기 화면으로 돌아오는 것도 확인했습니다. 설치된 예전 HTML이 계속 열려 있는 경우 새 UI/버전 표시가 없으므로 구버전임을 구분할 수 있습니다. 단순히 캐시 버전이 새것이라고 화면 코드도 바뀌었다고 주장하지 않습니다.
+
+최종 단위 28개 및 Chrome 전체 회귀: 하단 버튼 하나만 표시, 최초 탭이 패널을 열지 않음, 반복 탭, Tab/Enter/Shift+Tab 포커스 순환, 닫기/Escape/포커스 복귀, 자동 숨김/설정 유지, 통화/지연/오류/백그라운드/늦은 메시지/설정 검증, native Wake Lock 재시도, 실제 버전 및 사용자 업데이트 모두 통과. 8개 가로/세로/0 inset/비대칭/짧은 화면에서 타깃 위치, 패널 상단 최소 48px, 스크롤 후 닫기 노출을 검사했습니다. v1/v3/v5/v6 각각 root/index에서 v7 셸 갱신과 offline PNG, 다른 캐시 보존을 검증합니다. 이는 Chrome 레이아웃 검사이며 iPadOS 시스템 상태표시줄의 직접 재현은 아닙니다.
+
+근거: evidence/v7-unit-tests.txt, v7-browser-tests.txt, v7-layouts.json, v7-mobile-clean.png, v7-mobile-toggle.png, v7-mobile-settings.png, v7-mobile-stale.png 및 iPad 두 방향 설정 PNG. iPad 실기기 직접 검증과 장시간 검증은 남아 있습니다.

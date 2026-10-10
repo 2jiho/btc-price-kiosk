@@ -23,7 +23,7 @@ const server = http.createServer((req, res) => {
   let content = old && !name.startsWith('icons/') && !['wake-lock.js', 'market-data.js'].includes(name) ? original(name) : fs.readFileSync(path.join(root, name));
   serverHistory.push({ pathname, old, swRevision, htmlNew: name === 'index.html' ? content.toString().includes('id="currency-controls"') : null });
   if (htmlRevision && name === 'index.html') content = content.toString().replace('</body>', '<div id="html-only-update" hidden></div></body>');
-  if (swRevision && name === 'service-worker.js') content = content.toString().replace(' + "v6"', ' + "v7"');
+  if (swRevision && name === 'service-worker.js') content = content.toString().replace(' + "v7"', ' + "v8"');
   res.end(content);
 });
 async function deterministicNetwork(context) {
@@ -122,198 +122,14 @@ async function validateIcons(page) {
     console.log('PASS wait regression: installed SDK async false returns immediately; corrected helper awaits three actual evaluations');
     await probeContext.close();
     if (process.env.SW_ONLY !== '1') {
-    const context = await browser.newContext({ viewport: { width: 1024, height: 768 }, hasTouch: true });
-    await deterministicNetwork(context);
-    const page = await context.newPage(); const errors = [], requests = [];
-    page.on('pageerror', error => errors.push(error.message)); page.on('request', request => requests.push(request.url()));
-    await page.clock.install();
-    await page.goto(base); await live(page);
-    fs.mkdirSync(path.join(root, '../evidence'), { recursive: true });
-    const iconReport = await validateIcons(page);
-    fs.writeFileSync(path.join(root, '../evidence/icon-pixel-checks.json'), JSON.stringify(iconReport, null, 2));
-    assert.match(await page.locator('#price-main').textContent(), /98,000,000/);
-    assert.equal(await page.locator('#change-label').textContent(), '전일 대비');
-    assert.equal(await page.evaluate(() => sockets.length), 1);
-    assert.equal(await page.evaluate(() => localStorage.getItem('btc-last-exchange-rate')), null);
-    await page.waitForFunction(() => document.getElementById('wake-lock-status').textContent.includes('활성'));
-    assert.equal(await page.locator('#currency-controls').isVisible(), false);
-    assert.equal(await page.locator('#wake-lock-panel').isVisible(), false);
-    assert.equal(await page.locator('#status-indicator').isVisible(), false);
-    await page.keyboard.press('Tab');
-    assert.equal(await page.locator('#currency-controls').isVisible(), true);
-    assert.equal(await page.evaluate(() => document.activeElement.dataset.currency), 'KRW');
-    await page.clock.fastForward(6000);
-    assert.equal(await page.locator('#currency-controls').isVisible(), true);
-    await page.locator('#price-main').tap();
-    await page.clock.fastForward(6000);
-    assert.equal(await page.locator('#currency-controls').isVisible(), false);
-    await page.setViewportSize({ width: 390, height: 844 });
-    const tapPoint = await page.locator('[data-currency="USDT"]').evaluate(el => {
-      const r = el.getBoundingClientRect(); return { x: r.x + r.width / 2, y: r.y + r.height / 2 };
-    });
-    await page.touchscreen.tap(tapPoint.x, tapPoint.y);
-    assert.equal(await page.locator('[data-currency="KRW"]').getAttribute('aria-pressed'), 'true');
-    assert.equal(await page.locator('#currency-controls').isVisible(), true);
-    await page.locator('[data-currency="USDT"]').tap();
-    await live(page);
-    for (let i = 0; i < 5; i++) await page.locator('[data-currency="USDT"]').tap();
-    await page.clock.fastForward(6000);
-    assert.equal(await page.locator('#currency-controls').isVisible(), true);
-    assert.equal(await page.evaluate(() => sockets.filter(s => s.readyState !== 3).length), 1);
-    await page.locator('[data-currency="KRW"]').tap();
-    await page.clock.fastForward(11000); await live(page);
-    await page.locator('#price-main').tap(); await page.clock.fastForward(6000);
-    assert.equal(await page.locator('#currency-controls').isVisible(), false);
-    fs.mkdirSync(path.join(root, '../evidence'), { recursive: true });
-    await page.screenshot({ path: path.join(root, '../evidence/ui-mobile-hidden.png') });
-    await page.locator('#price-main').tap();
-    await page.screenshot({ path: path.join(root, '../evidence/ui-mobile-controls.png') });
-    await page.keyboard.press('Tab');
-    await page.locator('#status-indicator').focus(); await page.keyboard.press('Enter');
-    await page.clock.fastForward(6000);
-    assert.equal(await page.locator('#admin-panel').isVisible(), true);
-    assert.equal(await page.locator('#currency-controls').isVisible(), true);
-    await page.keyboard.press('Escape');
-    await page.locator('#price-main').tap(); await page.clock.fastForward(6000);
-    assert.equal(await page.locator('#currency-controls').isVisible(), false);
-    await page.setViewportSize({ width: 1024, height: 768 });
-    await page.locator('#price-main').click();
-    await page.evaluate(() => testSentinel.release());
-    await page.getByRole('button', { name: '화면 켜짐 유지 다시 시도' }).click();
-    await page.waitForFunction(() => wakeRequests === 2 && document.getElementById('wake-lock-status').textContent.includes('활성'));
-    fs.mkdirSync(path.join(root, '../evidence'), { recursive: true });
-    await page.screenshot({ path: path.join(root, '../evidence/kiosk-krw.png') });
-    await page.evaluate(() => { suppressTicks = true; window.lateMessage = sockets.at(-1).onmessage; window.lateClose = sockets.at(-1).onclose; });
-    await page.getByRole('button', { name: 'USDT · 바이낸스' }).click();
-    assert.equal(await page.locator('#price-main').textContent(), '—');
-    assert.equal(await page.locator('#price-source').textContent(), '바이낸스 · BTC/USDT');
-    await page.evaluate(() => {
-      lateMessage({ data: JSON.stringify({ type: 'ticker', code: 'KRW-BTC', trade_price: 1, signed_change_rate: 0, timestamp: Date.now() }) });
-      lateClose(); suppressTicks = false; sockets.at(-1).emit();
-    });
-    await live(page); assert.equal(await page.locator('#price-main').textContent(), '70,000.10 USDT');
-    assert.equal(await page.locator('#change-label').textContent(), '24h');
-    await page.screenshot({ path: path.join(root, '../evidence/kiosk-usdt.png') });
-    await page.setViewportSize({ width: 390, height: 844 });
-    const bounds = await page.locator('#container').boundingBox();
-    assert.ok(bounds.x >= 0 && bounds.x + bounds.width <= 390);
-    assert.ok((await page.locator('[data-currency="USDT"]').boundingBox()).height >= 44);
-    await page.screenshot({ path: path.join(root, '../evidence/kiosk-mobile.png') });
-    await page.setViewportSize({ width: 1024, height: 768 });
-    for (let i = 0; i < 10; i++) {
-      await page.locator('[data-currency="KRW"]').click(); await page.locator('[data-currency="USDT"]').click();
+      await require('./kiosk-ui.cjs')(browser, base, root, deterministicNetwork, value => { swRevision = value; });
+      const iconsContext = await browser.newContext(); const iconsPage = await iconsContext.newPage();
+      await deterministicNetwork(iconsContext); await iconsPage.goto(base);
+      const iconReport = await validateIcons(iconsPage);
+      fs.writeFileSync(path.join(root, '../evidence/icon-pixel-checks.json'), JSON.stringify(iconReport, null, 2));
+      await iconsContext.close();
     }
-    await page.clock.fastForward(11000); await live(page);
-    assert.equal(await page.evaluate(() => sockets.filter(s => s.readyState !== 3).length), 1);
-    assert.equal(await page.evaluate(() => JSON.parse(localStorage.getItem('btc-kiosk-settings')).currency), 'USDT');
-    await page.reload(); await page.clock.fastForward(3000); await live(page);
-    assert.equal(await page.locator('[data-currency="USDT"]').getAttribute('aria-pressed'), 'true');
-    assert.equal(await page.locator('#price-source').textContent(), '바이낸스 · BTC/USDT');
-    await page.evaluate(() => { window.dispatchEvent(new Event('pagehide')); });
-    assert.equal(await page.evaluate(() => sockets.filter(s => s.readyState !== 3).length), 0);
-    await page.evaluate(() => { suppressTicks = true; window.dispatchEvent(new Event('pageshow')); });
-    await page.clock.fastForward(3000);
-    assert.notEqual(await page.locator('#status-indicator').getAttribute('class'), 'connected');
-    await page.evaluate(() => { suppressTicks = false; sockets.at(-1).emit(); }); await live(page);
-    await page.evaluate(() => { suppressTicks = true; }); await page.clock.fastForward(16000);
-    assert.match(await page.locator('#status-indicator').textContent(), /시세 업데이트 지연/);
-    await page.locator('#price-main').click(); await page.clock.fastForward(6000);
-    assert.equal(await page.locator('#currency-controls').isVisible(), false);
-    assert.equal(await page.locator('#overlay-title').isVisible(), true);
-    assert.equal(await page.locator('#overlay-msg').isVisible(), false);
-    assert.equal(await page.locator('#container').getAttribute('class'), 'price-unavailable');
-    assert.match(await page.locator('#overlay-msg').textContent(), /마지막 시세: 70,000.10 USDT/);
-    await page.evaluate(() => { suppressTicks = false; }); await page.clock.fastForward(3000); await live(page);
-    await page.keyboard.press('Tab');
-    await page.locator('#status-indicator').focus(); await page.keyboard.press('Enter');
-    await page.locator('#admin-symbol').fill('bad!'); await page.locator('#admin-save').click();
-    assert.equal(await page.evaluate(() => document.getElementById('admin-panel').style.display), 'flex');
-    await page.evaluate(() => { suppressTicks = true; });
-    await page.locator('#admin-symbol').fill('ETH'); await page.locator('#admin-save').click();
-    assert.equal(await page.locator('#price-main').textContent(), '—');
-    await page.evaluate(() => { suppressTicks = false; });
-    await page.clock.fastForward(3000); await live(page);
-    assert.equal(await page.locator('#price-source').textContent(), '바이낸스 · ETH/USDT');
-    // Raw stream's symbol is derived from its URL, as the real exchange does.
-    await page.evaluate(() => sockets.at(-1).emit({ c: 'Infinity' }));
-    assert.equal(await page.locator('#price-main').textContent(), '70,000.10 USDT');
-    await page.evaluate(() => sockets.at(-1).onmessage({ data: JSON.stringify({ error: { name: 'INVALID_PARAM' } }) }));
-    await page.waitForFunction(() => !document.getElementById('market-retry').hidden);
-    await page.getByRole('button', { name: '시세 다시 연결' }).click();
-    await page.clock.fastForward(3000); await live(page);
-    assert.equal(requests.some(url => /frankfurter|currency-api|manana/.test(url)), false);
-    assert.deepEqual(errors, []);
-    console.log('PASS Chrome mock feeds: KRW/USDT prices and labels, repeated switches, late events, saved choice, background/resume, stale data, ticker validation, keyboard settings, no FX requests, no page errors');
-    await page.evaluate(async () => { await navigator.serviceWorker.ready; });
-    await page.waitForFunction(() => !!navigator.serviceWorker.controller);
-    swRevision = true;
-    await page.evaluate(async () => { await (await navigator.serviceWorker.getRegistration()).update(); });
-    await page.waitForFunction(() => !document.getElementById('app-update').hidden);
-    await page.getByRole('button', { name: '새 버전 적용 (새로고침)' }).click();
-    await page.waitForFunction(() => document.getElementById('app-update').hidden);
-    console.log('PASS native Wake Lock acquire/release/retry and user-applied SW refresh');
-    await context.close(); swRevision = false;
-    const layoutContext = await browser.newContext({ hasTouch: true });
-    await deterministicNetwork(layoutContext);
-    const layoutPage = await layoutContext.newPage();
-    await layoutPage.clock.install(); await layoutPage.goto(base); await live(layoutPage);
-    assert.match(await layoutPage.locator('meta[name="viewport"]').getAttribute('content'), /viewport-fit=cover/);
-    assert.equal(await layoutPage.locator('meta[name="apple-mobile-web-app-status-bar-style"]').getAttribute('content'), 'black');
-    const layoutRecords = [];
-    for (const scenario of [
-      { name: 'ipad-portrait', width: 768, height: 1024, top: 24, right: 0, bottom: 20, left: 0 },
-      { name: 'ipad-landscape', width: 1024, height: 768, top: 24, right: 24, bottom: 20, left: 24 },
-      { name: 'landscape-asymmetric', width: 1194, height: 834, top: 32, right: 16, bottom: 21, left: 44 },
-      { name: 'ipad-portrait-zero', width: 768, height: 1024, top: 0, right: 0, bottom: 0, left: 0 },
-      { name: 'ipad-landscape-zero', width: 1024, height: 768, top: 0, right: 0, bottom: 0, left: 0 },
-      { name: 'desktop-zero', width: 1440, height: 900, top: 0, right: 0, bottom: 0, left: 0 },
-      { name: 'phone-portrait', width: 390, height: 844, top: 44, right: 0, bottom: 34, left: 0 },
-      { name: 'short-landscape', width: 1024, height: 360, top: 24, right: 24, bottom: 20, left: 24 },
-    ]) {
-      await layoutPage.setViewportSize({ width: scenario.width, height: scenario.height });
-      // Chrome cannot supply iPad system env values: inject the shared CSS
-      // variables to test layout arithmetic, wrapping and orientation changes.
-      await layoutPage.evaluate(s => {
-        for (const side of ['top', 'right', 'bottom', 'left']) document.documentElement.style.setProperty('--safe-' + side, s[side] + 'px');
-        document.getElementById('wake-lock-retry').hidden = false;
-        document.getElementById('app-update').hidden = false;
-      }, scenario);
-      await layoutPage.locator('#price-main').tap();
-      const header = await layoutPage.locator('#top-controls').boundingBox();
-      const currency = await layoutPage.locator('#currency-controls').boundingBox();
-      const status = await layoutPage.locator('#status-indicator').boundingBox();
-      const bottom = await layoutPage.locator('#wake-lock-panel').boundingBox();
-      const inside = box => {
-        assert.ok(box.x >= scenario.left + 11, scenario.name + ' left');
-        assert.ok(box.x + box.width <= scenario.width - scenario.right - 11, scenario.name + ' right');
-        assert.ok(box.y >= scenario.top + 7, scenario.name + ' top');
-        assert.ok(box.y + box.height <= scenario.height - scenario.bottom - 7, scenario.name + ' bottom');
-      };
-      [header, currency, status, bottom].forEach(inside);
-      const separated = currency.x + currency.width <= status.x || status.x + status.width <= currency.x ||
-        currency.y + currency.height <= status.y || status.y + status.height <= currency.y;
-      assert.ok(separated, scenario.name + ' header controls overlap');
-      assert.equal(header.y, scenario.top + 8);
-      await layoutPage.locator('#status-indicator').tap();
-      const dialog = await layoutPage.locator('#admin-panel').boundingBox(); inside(dialog);
-      await layoutPage.locator('#admin-close').scrollIntoViewIfNeeded();
-      inside(await layoutPage.locator('#admin-close').boundingBox());
-      await layoutPage.clock.fastForward(6000);
-      assert.equal(await layoutPage.locator('#admin-panel').isVisible(), true);
-      assert.equal(await layoutPage.locator('#currency-controls').isVisible(), true);
-      if (scenario.name === 'ipad-portrait' || scenario.name === 'ipad-landscape') {
-        await layoutPage.screenshot({ path: path.join(root, `../evidence/safe-area-${scenario.name}.png`) });
-      }
-      await layoutPage.keyboard.press('Escape');
-      await layoutPage.locator('#price-main').tap(); await layoutPage.clock.fastForward(6000);
-      assert.equal(await layoutPage.locator('#currency-controls').isVisible(), false);
-      layoutRecords.push({ scenario, header, currency, status, bottom, dialog });
-    }
-    fs.writeFileSync(path.join(root, '../evidence/safe-area-layouts.json'), JSON.stringify(layoutRecords, null, 2));
-    console.log('PASS safe area: 8 portrait/landscape/desktop/zero/asymmetric/short layouts, header separation, dialog and close bounds, hide/focus behavior (CSS inset simulation, not iPad OS)');
-    await layoutContext.close();
-    }
-    for (const sourceRef of [baseline, '0282223d45a32e418f1ce8b3c3b36de7af164d5e', '616f8c48af4c9a64eb5085cc876e7f83476b484f']) {
+    for (const sourceRef of [baseline, '0282223d45a32e418f1ce8b3c3b36de7af164d5e', '616f8c48af4c9a64eb5085cc876e7f83476b484f', '563526c230610c3be4cd073d662e3be20867248e']) {
     baselineRef = sourceRef;
     for (const entry of ['', 'index.html']) {
       old = true; htmlRevision = false;
@@ -344,7 +160,7 @@ async function validateIcons(page) {
           channel.port1.onmessage = event => { clearTimeout(timer); channel.port1.close(); resolve(event.data); };
           navigator.serviceWorker.controller.postMessage({ type: 'GET_APP_VERSION' }, [channel.port2]);
         });
-        return version?.cacheName.endsWith(':v6');
+        return version?.cacheName.endsWith(':v7');
       });
       await p.reload({ waitUntil: 'domcontentloaded' });
       try { await p.waitForSelector('#currency-controls', { state: 'attached', timeout: 10000 }); }
@@ -365,10 +181,10 @@ async function validateIcons(page) {
       htmlRevision = true;
       await p.goto(base); assert.equal(await p.locator('#html-only-update').count(), 1);
       await p.goto(base + 'index.html'); assert.equal(await p.locator('#html-only-update').count(), 1);
-      const keys = await p.evaluate(async () => { const n = (await caches.keys()).find(n => n.endsWith(':v6')); return (await (await caches.open(n)).keys()).map(r => r.url); });
+      const keys = await p.evaluate(async () => { const n = (await caches.keys()).find(n => n.endsWith(':v7')); return (await (await caches.open(n)).keys()).map(r => r.url); });
       assert.equal(keys.length, 10); assert.equal(keys.some(url => url === base), false);
       await waitForAsyncState(p, async () => {
-        const name = (await caches.keys()).find(n => n.endsWith(':v6'));
+        const name = (await caches.keys()).find(n => n.endsWith(':v7'));
         const response = await (await caches.open(name)).match(new URL('index.html', location.href).href);
         return (await response.text()).includes('id="html-only-update"');
       });
@@ -376,7 +192,7 @@ async function validateIcons(page) {
       await validateIcons(p);
       assert.match(await p.locator('#status-indicator').textContent(), /오프라인/);
       await p.goto(base + 'index.html'); assert.equal(await p.locator('#html-only-update').count(), 1);
-      console.log(`PASS ${sourceRef === baseline ? 'v1' : sourceRef === '0282223d45a32e418f1ce8b3c3b36de7af164d5e' ? 'v3' : 'v5'} -> v6 from ${entry || 'root'}: upgrade, root/index HTML refresh, offline shell (no cached market price), unrelated cache preserved`);
+      console.log(`PASS ${sourceRef === baseline ? 'v1' : sourceRef === '0282223d45a32e418f1ce8b3c3b36de7af164d5e' ? 'v3' : sourceRef === '616f8c48af4c9a64eb5085cc876e7f83476b484f' ? 'v5' : 'v6'} -> v7 from ${entry || 'root'}: upgrade, root/index HTML refresh, offline shell (no cached market price), unrelated cache preserved`);
       await c.close();
     }
     }
@@ -386,7 +202,7 @@ async function validateIcons(page) {
       const p = await c.newPage(); const socketErrors = [];
       p.on('console', msg => { if (msg.type() === 'error') socketErrors.push(msg.text()); });
       await p.goto(base);
-      await p.locator('#price-main').click();
+      await p.keyboard.press('Tab'); await p.locator('#settings-toggle').click();
       for (const currency of ['KRW', 'USDT']) {
         await p.locator(`[data-currency="${currency}"]`).click();
         try {

@@ -43,6 +43,6 @@ test('offline root/index use the same cached HTML; external APIs and other apps 
 test('SW version probe identifies the actual controlling build', () => {
   const f = fixture(() => {}, () => {}); let answer;
   f.handlers.message({ data: { type: 'GET_APP_VERSION' }, ports: [{ postMessage(value) { answer = value; } }] });
-  assert.equal(answer.type, 'APP_VERSION'); assert.equal(answer.cacheName, 'btc-price-kiosk:/btc-price-kiosk/:v6');
+  assert.equal(answer.type, 'APP_VERSION'); assert.equal(answer.cacheName, 'btc-price-kiosk:/btc-price-kiosk/:v7');
   f.handlers.message({ data: { type: 'unrelated' }, ports: [] });
 });

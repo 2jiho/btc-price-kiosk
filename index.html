@@ -81,120 +81,51 @@
         font-size: calc(var(--reference-size) * 2);
         color: gray;
       }
-      #status-indicator {
-        min-width: 0;
-        min-height: 44px;
-        flex: 1 1 180px;
-        display: flex;
-        align-items: center;
-        justify-content: flex-end;
-        text-align: right;
-        overflow-wrap: anywhere;
-        font-size: 12px;
-        color: #666;
-        opacity: 0.6;
-        transition: opacity 0.3s;
-        cursor: pointer;
-        user-select: none;
-      }
-      #status-indicator.error {
-        color: #ff6b6b;
-        opacity: 1;
-      }
-      #status-indicator.connected {
-        color: #51cf66;
-      }
-
-      #status-overlay {
-        position: fixed;
-        top: 0;
-        left: 0;
-        width: 100vw;
-        height: 100vh;
-        background-color: rgba(0, 0, 0, 0.7);
-        display: none;
-        flex-direction: column;
-        justify-content: center;
-        align-items: center;
-        z-index: 1000;
-        backdrop-filter: blur(5px);
-        transition: opacity 0.5s ease;
-      }
-      #status-overlay h1 {
-        color: #ff6b6b;
-        font-size: calc(var(--reference-size) * 8);
-        margin-bottom: 20px;
-        user-select: none;
-      }
-      #status-overlay p {
-        white-space: pre-line;
-        color: #fff;
-        font-size: calc(var(--reference-size) * 4);
-        user-select: none;
-      }
       #admin-panel {
         position: fixed;
-        top: calc(var(--safe-top) + (100vh - var(--safe-top) - var(--safe-bottom)) / 2);
-        top: calc(var(--safe-top) + (100dvh - var(--safe-top) - var(--safe-bottom)) / 2);
+        --panel-top: max(48px, calc(var(--safe-top) + 16px));
+        --panel-bottom: calc(var(--safe-bottom) + 16px);
+        top: calc(var(--panel-top) + (100vh - var(--panel-top) - var(--panel-bottom)) / 2);
+        top: calc(var(--panel-top) + (100dvh - var(--panel-top) - var(--panel-bottom)) / 2);
         left: calc(var(--safe-left) + (100vw - var(--safe-left) - var(--safe-right)) / 2);
         transform: translate(-50%, -50%);
-        background: #1a1a1a;
-        border: 1px solid #444;
-        border-radius: 8px;
-        padding: 24px;
+        box-sizing: border-box;
+        width: min(360px, calc(100vw - var(--safe-left) - var(--safe-right) - 32px));
+        max-height: calc(100vh - var(--panel-top) - var(--panel-bottom));
+        max-height: calc(100dvh - var(--panel-top) - var(--panel-bottom));
+        background: #171717;
+        border-radius: 20px;
+        padding: 20px;
         display: none;
         flex-direction: column;
-        gap: 12px;
-        z-index: 2000;
-        box-sizing: border-box;
-        width: min(370px, calc(100vw - var(--safe-left) - var(--safe-right) - 24px));
-        max-height: calc(100vh - var(--safe-top) - var(--safe-bottom) - 24px);
-        max-height: calc(100dvh - var(--safe-top) - var(--safe-bottom) - 24px);
+        gap: 16px;
         overflow: auto;
+        z-index: 2000;
+        text-align: left;
+        box-shadow: 0 12px 48px #0009;
       }
       #admin-panel > * { flex-shrink: 0; }
-      #admin-panel h2 {
-        margin: 0 0 4px 0;
-        color: #fff;
-        font-size: 16px;
-        text-align: center;
-      }
-      #admin-panel label {
-        color: #ccc;
-        font-size: 14px;
-        display: flex;
-        align-items: center;
-        justify-content: space-between;
-      }
-      #admin-panel label input[type="text"],
-      #admin-panel label input[type="number"] {
-        width: 120px;
-      }
-      .brightness-row {
-        display: flex;
-        align-items: center;
-        gap: 6px;
-      }
-      #admin-panel label input[type="text"],
-      #admin-panel label input[type="number"] {
-        width: 120px;
-      }
-      #brightness-value {
-        font-size: 13px;
-        color: #aaa;
-        display: inline-block;
-        width: 32px;
-        text-align: right;
-      }
-      .brightness-row {
-        display: flex;
-        align-items: center;
-        gap: 6px;
-        margin-top: 4px;
-      }
-      .brightness-row input[type="range"] {
-        flex: 1;
-      }
+      .settings-header { display: flex; align-items: center; justify-content: space-between; gap: 12px; position: sticky; top: -20px; background: #171717; z-index: 1; }
+      #admin-panel h2 { margin: 0; font-size: 18px; font-weight: 500; }
+      #admin-panel button, #settings-toggle { border: 0; border-radius: 12px; background: #282828; color: #ddd; font: inherit; min-height: 44px; padding: 10px 14px; cursor: pointer; }
+      #admin-panel button:hover { background: #333; }
+      #admin-panel button:disabled { opacity: 0.5; cursor: default; }
+      #admin-close { width: 44px; padding: 10px !important; background: transparent !important; }
+      #admin-panel svg, #settings-toggle svg { width: 22px; height: 22px; display: block; margin: auto; }
+      .settings-section { display: flex; flex-direction: column; gap: 10px; }
+      #admin-panel label { display: flex; align-items: center; justify-content: space-between; gap: 12px; color: #aaa; font-size: 13px; }
+      #admin-symbol { width: 100px; padding: 10px; box-sizing: border-box; border: 0; border-radius: 9px; background: #252525; color: #eee; font: inherit; }
+      .brightness-row { display: flex; align-items: center; gap: 8px; }
+      .brightness-row input { width: 140px; accent-color: #b9b9b9; }
+      #brightness-value { font-size: 12px; min-width: 34px; text-align: right; }
+      #currency-controls { display: flex; gap: 6px; padding: 4px; border-radius: 14px; background: #101010; }
+      #currency-controls button { flex: 1; color: #888; background: transparent; }
+      #currency-controls button[aria-pressed="true"] { background: #303030; color: #fff; }
+      #currency-controls span { display: block; font-size: 11px; color: #999; margin-top: 3px; }
+      #status-indicator, #overlay-msg, #wake-lock-status { font-size: 12px; line-height: 1.6; color: #888; margin: 0; white-space: pre-line; overflow-wrap: anywhere; }
+      #status-indicator.error { color: #c99191; }
+      #admin-save { background: #ddd !important; color: #151515 !important; }
+      #app-version { color: #666; font-size: 11px; margin: 0; }
       #icon-fallback {
         display: none;
         height: calc(var(--reference-size) * 15);
@@ -226,127 +157,67 @@
         pointer-events: none;
       }
       #toast.show { opacity: 1; }
-      #wake-lock-panel {
+      #wake-lock-panel { display: flex; flex-direction: column; gap: 8px; }
+      #settings-toggle {
         position: fixed;
-        bottom: calc(8px + var(--safe-bottom));
-        left: calc(12px + var(--safe-left));
-        right: calc(12px + var(--safe-right));
-        color: #aaa;
-        font-size: 12px;
+        bottom: calc(16px + var(--safe-bottom));
+        right: calc(16px + var(--safe-right));
+        width: 48px;
+        height: 48px;
+        padding: 12px;
+        border-radius: 50%;
+        background: #181818;
+        color: #999;
         z-index: 1500;
       }
-      #wake-lock-panel button {
-        min-height: 44px;
-        margin: 4px;
-        padding: 6px 12px;
-        background: #222;
-        color: #fff;
-        border: 1px solid #888;
-        border-radius: 6px;
-      }
-      #top-controls {
-        position: fixed;
-        top: calc(8px + var(--safe-top));
-        left: calc(12px + var(--safe-left));
-        right: calc(12px + var(--safe-right));
-        display: flex;
-        flex-wrap: wrap;
-        align-items: flex-start;
-        justify-content: space-between;
-        gap: 8px 12px;
-        z-index: 1500;
-      }
-      #currency-controls {
-        display: flex;
-        flex-wrap: wrap;
-        gap: 6px;
-        max-width: 100%;
-      }
-      #currency-controls button, #market-retry {
-        background: #111;
-        color: #bbb;
-        border: 1px solid #555;
-        border-radius: 6px;
-        min-height: 44px;
-        padding: 6px 12px;
-      }
-      #currency-controls button[aria-pressed="true"] { color: #fff; border-color: #f7931a; }
-      .admin-note { color: #aaa; font-size: 12px; }
-      button:focus-visible, #status-indicator:focus-visible { outline: 2px solid #fff; }
-      /* Hidden controls cannot intercept taps or enter the tab order.
-         Tab reveals them before the browser moves keyboard focus. */
-      body:not(.controls-visible) #currency-controls,
-      body:not(.controls-visible) #wake-lock-panel,
-      body:not(.controls-visible) #status-indicator,
-      body:not(.controls-visible) #market-retry,
-      body:not(.controls-visible) #overlay-msg {
-        visibility: hidden;
-        pointer-events: none;
-      }
-      #status-overlay {
-        top: auto;
-        left: calc(12px + var(--safe-left));
-        right: calc(12px + var(--safe-right));
-        width: auto;
-        bottom: calc(18% + var(--safe-bottom));
-        height: auto;
-        background: transparent;
-        backdrop-filter: none;
-        pointer-events: none;
-      }
-      #status-overlay h1 { font-size: 16px; margin: 0 12px 6px; }
-      #status-overlay p { font-size: 12px; margin: 0 12px 6px; }
-      body.controls-visible #market-retry { pointer-events: auto; }
+      button:focus-visible, input:focus-visible { outline: 2px solid #aaa; outline-offset: 3px; }
+      body:not(.controls-visible) #settings-toggle,
+      body.settings-open #settings-toggle { visibility: hidden; pointer-events: none; }
+      #status-overlay { justify-content: center; margin-top: 8px; }
+      #overlay-title { color: #b88d8d; font-size: 12px; line-height: 1.5; margin: 0; }
       #container.price-unavailable #price-main { opacity: 0.55; }
       [hidden] { display: none !important; }
     </style>
   </head>
   <body>
     <div id="admin-panel" role="dialog" aria-modal="true" aria-labelledby="admin-title">
-      <h2 id="admin-title">관리자 설정</h2>
-      <label>
-        코인 티커
-        <input type="text" id="admin-symbol" value="BTC" placeholder="BTC" />
-      </label>
-      <p class="admin-note">공개 WebSocket 실시간 시세 · 선택한 거래소만 연결</p>
-      <label>
-        디버그 모드
-        <input type="checkbox" id="admin-debug" />
-      </label>
-      <label>
-        화면 밝기
-        <div class="brightness-row">
-          <input type="range" id="admin-brightness" min="10" max="100" value="100" step="5" />
-          <span id="brightness-value">100%</span>
-        </div>
-      </label>
-      <button id="admin-save">저장 및 적용</button>
-      <button id="admin-close">닫기</button>
-    </div>
-    <div id="top-controls">
-      <div id="currency-controls" role="group" aria-label="표시 통화 및 거래소 선택">
-        <button type="button" data-currency="KRW" aria-pressed="true">원화 · 업비트</button>
-        <button type="button" data-currency="USDT" aria-pressed="false">USDT · 바이낸스</button>
+      <div class="settings-header">
+        <h2 id="admin-title">설정</h2>
+        <button id="admin-close" type="button" aria-label="설정 닫기"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><path d="m6 6 12 12M18 6 6 18"/></svg></button>
       </div>
-      <div id="status-indicator" role="button" tabindex="0" aria-label="관리자 설정 열기" aria-live="polite"></div>
+      <div class="settings-section">
+        <div id="currency-controls" role="group" aria-label="표시 통화 및 거래소 선택">
+          <button type="button" data-currency="KRW" aria-pressed="true" aria-label="원화 · 업비트">원화<span>업비트</span></button>
+          <button type="button" data-currency="USDT" aria-pressed="false" aria-label="USDT · 바이낸스">USDT<span>바이낸스</span></button>
+        </div>
+        <p id="status-indicator" role="status" aria-live="polite"></p>
+        <p id="overlay-msg" hidden></p>
+        <button id="market-retry" type="button" hidden>시세 다시 연결</button>
+      </div>
+      <div id="wake-lock-panel">
+        <span id="wake-lock-status" role="status" aria-live="polite"></span>
+        <button id="wake-lock-retry" type="button" hidden>화면 켜짐 유지 다시 시도</button>
+        <button id="app-update" type="button" hidden>새 버전 적용</button>
+      </div>
+      <div class="settings-section">
+        <label>코인 티커<input type="text" id="admin-symbol" value="BTC" placeholder="BTC" /></label>
+        <label>화면 밝기<div class="brightness-row"><input type="range" id="admin-brightness" min="10" max="100" value="100" step="5" /><span id="brightness-value">100%</span></div></label>
+        <label>디버그 모드<input type="checkbox" id="admin-debug" /></label>
+      </div>
+      <button id="admin-save" type="button">적용</button>
+      <p id="app-version">버전 v7 · 캐시 확인 중</p>
     </div>
+    <button id="settings-toggle" type="button" aria-label="설정 열기" aria-controls="admin-panel" aria-expanded="false">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m9.5 3-.7 2.5-2 .9L4.4 6 2 10l1.9 1.8v.4L2 14l2.4 4 2.4-.4 2 .9.7 2.5h5l.7-2.5 2-.9 2.4.4L22 14l-1.9-1.8v-.4L22 10l-2.4-4-2.4.4-2-.9-.7-2.5z"/><circle cx="12" cy="12" r="3"/></svg>
+    </button>
     <div id="toast" role="status"></div>
-    <div id="wake-lock-panel">
-      <span id="wake-lock-status" role="status" aria-live="polite"></span>
-      <button id="wake-lock-retry" type="button" hidden>화면 켜짐 유지 다시 시도</button>
-      <button id="app-update" type="button" hidden>새 버전 적용 (새로고침)</button>
-    </div>
-    <div id="status-overlay">
-      <h1 id="overlay-title">새 시세 대기</h1>
-      <p id="overlay-msg">시세 수신을 기다립니다.</p>
-      <button id="market-retry" type="button" hidden>시세 다시 연결</button>
-    </div>
     <div id="container">
       <img src="./bitcoin-btc-logo.svg" id="icon" alt="Bitcoin logo" />
       <div id="icon-fallback"></div>
       <div>
         <p id="price-main" aria-live="polite" aria-atomic="true"></p>
         <p id="price-source"></p>
+        <div id="status-overlay"><p id="overlay-title"></p></div>
       </div>
       <div>
         <p id="change" aria-live="polite" aria-atomic="true"></p>
@@ -385,7 +256,8 @@
         var adminReturnFocus = null;
         var controlsTimer = null;
         var revealOnlyClick = false;
-        var controlSelector = '#currency-controls, #wake-lock-panel, #status-indicator, #market-retry, #admin-panel';
+        var elToggle = document.getElementById('settings-toggle');
+        var controlSelector = '#settings-toggle, #admin-panel';
 
         function controlsInUse() {
           return elAdminPanel.style.display === 'flex' ||
@@ -502,7 +374,10 @@
           elContainer.classList.toggle('price-unavailable', kind !== 'live');
           var problem = ["backoff", "error", "offline"].includes(kind);
           elOverlay.style.display = problem || (kind !== "live" && !!state.last) ? "flex" : "none";
-          elOverlayTitle.textContent = kind === "error" ? "시세 오류" : kind === "offline" ? "오프라인" : "새 시세 대기";
+          elOverlayTitle.textContent = kind === "error" ? "시세 오류" : kind === "offline" ? "오프라인" :
+            kind === "backoff" && /지연/.test(state.reason) ? "시세 지연" : "새 시세 대기";
+          if (kind !== 'live' && state.last) elOverlayTitle.textContent += ' · 마지막 가격';
+          elOverlayMsg.hidden = kind === 'live';
           var detail = state.last ? "마지막 시세: " + formatPrice(state.last) + " · " +
             Math.max(0, Math.floor((Date.now() - Math.min(state.last.receivedAt, state.last.eventTime)) / 1000)) + "초 전" : "아직 수신한 시세가 없습니다.";
           elOverlayMsg.textContent = detail + (state.reason ? "\n" + state.reason : "");
@@ -563,15 +438,19 @@
 
         function showAdminPanel() {
           revealControls();
-          adminReturnFocus = document.activeElement;
+          adminReturnFocus = elToggle;
+          document.body.classList.add('settings-open');
+          elToggle.setAttribute('aria-expanded', 'true');
           elAdminSymbol.value = settings.ticker;
           elAdminDebug.checked = settings.debug;
           elAdminBrightness.value = settings.brightness;
           elBrightnessValue.textContent = settings.brightness + "%";
-          elAdminPanel.style.display = "flex"; elAdminSymbol.focus();
+          elAdminPanel.style.display = "flex"; document.getElementById("admin-close").focus();
         }
         function hideAdminPanel() {
           elAdminPanel.style.display = "none";
+          document.body.classList.remove('settings-open');
+          elToggle.setAttribute('aria-expanded', 'false');
           elContainer.style.setProperty("filter", "brightness(" + settings.brightness + "%)");
           if (adminReturnFocus) adminReturnFocus.focus();
           scheduleControlsHide();
@@ -589,10 +468,7 @@
           if (saved) showToast("설정이 저장되었습니다.");
         });
         document.getElementById("admin-close").addEventListener("click", hideAdminPanel);
-        elStatus.addEventListener("click", showAdminPanel);
-        elStatus.addEventListener("keydown", function (event) {
-          if (event.key === "Enter" || event.key === " ") { event.preventDefault(); showAdminPanel(); }
-        });
+        elToggle.addEventListener("click", showAdminPanel);
         elAdminBrightness.addEventListener("input", function () {
           elContainer.style.setProperty("filter", "brightness(" + elAdminBrightness.value + "%)");
           elBrightnessValue.textContent = elAdminBrightness.value + "%";
@@ -601,7 +477,7 @@
           if (elAdminPanel.style.display !== "flex") return;
           if (event.key === "Escape") hideAdminPanel();
           if (event.key === "Tab") {
-            var focusable = elAdminPanel.querySelectorAll("input, button");
+            var focusable = Array.from(elAdminPanel.querySelectorAll("input, button")).filter(function (el) { return !el.hidden && !el.disabled && el.getClientRects().length; });
             var first = focusable[0], end = focusable[focusable.length - 1];
             if (event.shiftKey && document.activeElement === first) { event.preventDefault(); end.focus(); }
             else if (!event.shiftKey && document.activeElement === end) { event.preventDefault(); first.focus(); }
@@ -613,11 +489,26 @@
         });
         document.addEventListener("fullscreenchange", hideCursor);
 
+        function showCacheVersion() {
+          var label = document.getElementById('app-version');
+          if (!('serviceWorker' in navigator)) { label.textContent = '버전 v7 · 캐시 미지원'; return; }
+          if (!navigator.serviceWorker.controller) { label.textContent = '버전 v7 · 캐시 대기'; return; }
+          var channel = new MessageChannel();
+          var timer = setTimeout(function () { channel.port1.close(); label.textContent = '버전 v7 · 캐시 확인 불가'; }, 1500);
+          channel.port1.onmessage = function (event) {
+            clearTimeout(timer); channel.port1.close();
+            var cache = event.data && event.data.cacheName;
+            label.textContent = '버전 v7 · 캐시 ' + (typeof cache === 'string' ? cache.split(':').pop() : '확인 불가');
+          };
+          navigator.serviceWorker.controller.postMessage({ type: 'GET_APP_VERSION' }, [channel.port2]);
+        }
+        showCacheVersion();
         if ("serviceWorker" in navigator) {
           var hadController = !!navigator.serviceWorker.controller;
           var updateButton = document.getElementById("app-update");
           updateButton.addEventListener("click", function () { window.location.reload(); });
           navigator.serviceWorker.addEventListener("controllerchange", function () {
+            showCacheVersion();
             if (hadController) updateButton.hidden = false;
             hadController = true;
           });
